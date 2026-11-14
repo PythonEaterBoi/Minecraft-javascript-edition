@@ -415,8 +415,9 @@ class Game {
       this.survival.load(save.survival);
       if (save.gamemode === 'creative' || save.survival?.creative) this.gamemode = 'creative';
     } else if (!this.noSave) {
-      // A brand-new survival world: start with a few staples so the first
-      // minute is not just punching trees in the dark.
+      // A brand-new survival world starts empty, like the real thing: punch a
+      // tree, craft a table, then work towards a pickaxe. The opening hint in
+      // `play()` tells the player that much.
       this.gamemode = 'survival';
     }
     this.survival.creative = this.gamemode === 'creative';
@@ -532,6 +533,10 @@ class Game {
     if (!this.ui.isTouch) this.requestLockWithHint();
     else this.ui.toast('Drag to look · joystick to move', 3200);
     this.ui.setDebugVisible(this.ui.debugVisible);
+    if (!this.startHintShown && this.gamemode === 'survival' && this.inventory.slots.every((slot) => !slot)) {
+      this.startHintShown = true;
+      this.ui.toast('Mine a tree for wood · E to craft · T for chat and commands', 5200);
+    }
   }
 
   pause() {
