@@ -1042,3 +1042,128 @@ body.touch .held-block {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------------- Multiplayer ---------------- */
+
+.mp-hud {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(8, 12, 10, 0.62);
+  border: 1px solid var(--border-light);
+  color: #cdebb8;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(4px);
+}
+
+.mp-intro {
+  margin: 0 0 8px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.mp-row {
+  margin: 8px 0 0;
+}
+
+.mp-row .mp-label {
+  margin: 0;
+  min-width: 46px;
+}
+
+.mp-heading {
+  margin: 14px 0 4px;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.mp-hint {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.mp-label {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.mp-code {
+  width: 100%;
+  min-height: 62px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #d8e7c9;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  word-break: break-all;
+  resize: vertical;
+  user-select: text;
+}
+
+.mp-code-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.mp-status {
+  margin: 8px 0 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #e8f2e0;
+}
+
+.mp-status.connected {
+  border-color: #6fbf4a;
+  background: rgba(74, 140, 48, 0.18);
+  color: #d6f7c5;
+}
+
+.mp-status.waiting {
+  border-color: #b9a44a;
+  background: rgba(140, 116, 40, 0.14);
+}
+
+.mp-status.error {
+  border-color: #c85a4a;
+  background: rgba(150, 50, 40, 0.18);
+  color: #ffd7d0;
+}
+
+.mp-players {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--green);
+}
+
+/* ---------------- Keyboard focus ---------------- */
+
+.mc-button:focus-visible,
+.touch-btn:focus-visible,
+.toggle:focus-visible,
+.hotbar-slot:focus-visible,
+.block-cell:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(0, 0, 0, 0.55);
+}

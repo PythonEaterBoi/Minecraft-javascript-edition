@@ -29,10 +29,13 @@ const SPLASHES = [
 
 const CONTROLS = [
   [['W', 'A', 'S', 'D'], 'Move around'],
-  [['Mouse'], 'Look around'],
+  [['Arrows'], 'Look around (keyboard)'],
+  [['Mouse'], 'Look around (when captured)'],
   [['Left click'], 'Break block'],
   [['Right click'], 'Place block'],
   [['Middle click'], 'Pick block'],
+  [['V'], 'Break block (keyboard)'],
+  [['B'], 'Place block (keyboard)'],
   [['Space'], 'Jump · swim up'],
   [['Shift'], 'Sprint · descend while flying'],
   [['F'], 'Toggle flight'],
@@ -42,6 +45,8 @@ const CONTROLS = [
   [['T'], 'Pause / resume time'],
   [['F3'], 'Debug information'],
   [['Esc'], 'Pause game'],
+  [['↑', '↓'], 'Move between menu buttons'],
+  [['Enter'], 'Activate the focused button'],
 ];
 
 const el = (tag, className, text) => {
@@ -71,6 +76,19 @@ export class UI {
     this.labelTimer = 0;
     this.toastTimer = 0;
     this.playReady = false;
+    this.mpKind = null;
+    this.mpView = {
+      name: '',
+      room: 'coop',
+      status: 'Not connected',
+      statusKind: 'idle',
+      players: [],
+      offer: '',
+      answer: '',
+      invite: '',
+      answerOut: '',
+      connected: false,
+    };
 
     this.el = {
       hud: document.getElementById('hud'),
@@ -106,6 +124,7 @@ export class UI {
       heldBlock: document.getElementById('held-block'),
       heldCanvas: document.getElementById('held-canvas'),
       inventoryClose: document.getElementById('inventory-close'),
+      mpHud: document.getElementById('mp-hud'),
     };
 
     this.el.splash.textContent = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
@@ -168,6 +187,8 @@ export class UI {
     click('btn-new-world', () => this.openNewWorld());
     click('btn-title-settings', () => this.openSettings());
     click('btn-title-controls', () => this.openControls());
+    click('btn-title-multiplayer', () => this.callbacks.onMpOpen?.());
+    click('btn-pause-multiplayer', () => this.callbacks.onMpOpen?.());
     click('btn-resume', () => this.callbacks.onResume?.());
     click('btn-pause-settings', () => this.openSettings());
     click('btn-pause-controls', () => this.openControls());
@@ -188,6 +209,7 @@ export class UI {
   showTitle() {
     this.titleVisible = true;
     this.el.title.classList.remove('hidden');
+    setTimeout(() => this.focusDefault(), 0);
   }
 
   hideTitle() {
@@ -198,6 +220,7 @@ export class UI {
   showPause(meta) {
     if (meta) this.el.pauseMeta.textContent = meta;
     this.el.pause.classList.remove('hidden');
+    setTimeout(() => this.focusDefault(), 0);
   }
 
   hidePause() {
@@ -219,6 +242,13 @@ export class UI {
     this.playReady = pct >= 98;
     this.el.playBtn.disabled = !this.playReady;
     this.el.playSub.textContent = this.playReady ? label || 'click to play' : `${pct}% · generating world`;
+    // When the world finishes loading, make Play the keyboard default again.
+    if (this.playReady && this.titleVisible && !this.modalOpen) {
+      const active = document.activeElement;
+      if (!active || active === document.body || active.classList.contains('mc-button')) {
+        this.el.playBtn.focus({ preventScroll: true });
+      }
+    }
   }
 
   setSeed(seed) {
@@ -252,36 +282,45 @@ export class UI {
 
   openModal(title, contentBuilder) {
     // Hide whatever screen is behind the modal so its text does not ghost
-    // through the translucent panel.
-    this.modalReturn = null;
-    if (!this.el.pause.classList.contains('hidden')) {
-      this.modalReturn = 'pause';
-      this.el.pause.classList.add('hidden');
-    } else if (!this.el.title.classList.contains('hidden')) {
-      this.modalReturn = 'title';
-      this.el.title.classList.add('hidden');
+    // through the translucent panel. Rebuilding a modal keeps the remembered
+    // return screen instead of losing it.
+    if (!this.modalReturn) {
+      this.modalReturn = null;
+      if (!this.el.pause.classList.contains('hidden')) {
+        this.modalReturn = 'pause';
+        this.el.pause.classList.add('hidden');
+      } else if (!this.el.title.classList.contains('hidden')) {
+        this.modalReturn = 'title';
+        this.el.title.classList.add('hidden');
+      }
     }
     this.el.modalTitle.textContent = title;
     this.el.modalBody.innerHTML = '';
     contentBuilder(this.el.modalBody);
+    const firstOpen = !this.modalOpen;
     this.modalOpen = true;
     this.el.modal.classList.remove('hidden');
     this.el.modalBody.scrollTop = 0;
+    if (firstOpen) setTimeout(() => this.focusDefault(), 0);
   }
 
   closeModal() {
     if (!this.modalOpen) return;
     this.modalOpen = false;
+    this.mpKind = null;
     this.el.modal.classList.add('hidden');
     if (this.modalReturn === 'pause' && this.callbacks.isPaused?.() !== false) {
       this.el.pause.classList.remove('hidden');
+      setTimeout(() => this.focusDefault(), 0);
     } else if (this.modalReturn === 'title') {
       this.el.title.classList.remove('hidden');
+      setTimeout(() => this.focusDefault(), 0);
     }
     this.modalReturn = null;
   }
 
   openSettings() {
+    this.mpKind = null;
     this.openModal('Settings', (body) => {
       const rows = [
         {
@@ -363,6 +402,7 @@ export class UI {
   }
 
   openControls() {
+    this.mpKind = null;
     this.openModal('Controls', (body) => {
       const grid = el('div', 'controls-grid');
       for (const [keys, action] of CONTROLS) {
@@ -389,6 +429,7 @@ export class UI {
   }
 
   openNewWorld() {
+    this.mpKind = null;
     this.openModal('Create New World', (body) => {
       body.append(
         el(
@@ -419,6 +460,272 @@ export class UI {
       body.append(row);
       setTimeout(() => input.focus(), 50);
     });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Keyboard navigation                                                 */
+  /* ------------------------------------------------------------------ */
+
+  activePanel() {
+    if (this.modalOpen) return this.el.modal;
+    if (this.inventoryOpen) return this.el.inventory;
+    if (!this.el.pause.classList.contains('hidden')) return this.el.pause;
+    if (!this.el.title.classList.contains('hidden')) return this.el.title;
+    return null;
+  }
+
+  focusables() {
+    const panel = this.activePanel();
+    if (!panel) return [];
+    return [...panel.querySelectorAll('button, input, textarea, [tabindex]')].filter(
+      (node) => !node.disabled && node.getClientRects().length > 0,
+    );
+  }
+
+  focusDefault() {
+    if (!this.activePanel()) return;
+    const items = this.focusables();
+    const preferred = items.find((node) => node.classList.contains('primary')) || items[0];
+    if (preferred) preferred.focus({ preventScroll: true });
+  }
+
+  moveFocus(delta) {
+    const items = this.focusables();
+    if (!items.length) return;
+    const current = items.indexOf(document.activeElement);
+    const index =
+      current < 0 ? (delta > 0 ? 0 : items.length - 1) : (current + delta + items.length) % items.length;
+    items[index].focus();
+    this.callbacks.onUiSound?.();
+  }
+
+  /** Arrow-key menu navigation. Returns true when the key was consumed. */
+  handleKeyNav(event) {
+    if (!this.activePanel()) return false;
+    const target = event.target;
+    const tag = target && target.tagName;
+    const isField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable;
+    const isRange = tag === 'INPUT' && target.type === 'range';
+    const isMultiline = tag === 'TEXTAREA';
+
+    switch (event.code) {
+      case 'ArrowDown':
+      case 'ArrowUp': {
+        if (isRange || isMultiline) return false;
+        event.preventDefault();
+        this.moveFocus(event.code === 'ArrowDown' ? 1 : -1);
+        return true;
+      }
+      case 'ArrowRight':
+      case 'ArrowLeft': {
+        if (isField) return false;
+        event.preventDefault();
+        this.moveFocus(event.code === 'ArrowRight' ? 1 : -1);
+        return true;
+      }
+      case 'Home':
+      case 'End': {
+        if (isField) return false;
+        const items = this.focusables();
+        if (!items.length) return false;
+        event.preventDefault();
+        (event.code === 'Home' ? items[0] : items[items.length - 1]).focus();
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Multiplayer                                                         */
+  /* ------------------------------------------------------------------ */
+
+  openMultiplayer(view = {}) {
+    Object.assign(this.mpView, view);
+    this.mpKind = 'multiplayer';
+    this._buildMultiplayer();
+  }
+
+  updateMultiplayer(view = {}) {
+    Object.assign(this.mpView, view);
+    if (this.modalOpen && this.mpKind === 'multiplayer') this._buildMultiplayer();
+  }
+
+  setMultiplayerStatus(kind, text) {
+    this.mpView.statusKind = kind;
+    this.mpView.status = text;
+    this.updateMultiplayer({});
+  }
+
+  setMultiplayerPlayers(players) {
+    this.mpView.players = (players || []).map((peer) => peer.name || 'Player');
+    this.updateMultiplayer({});
+  }
+
+  setMultiplayerHud(count) {
+    if (!this.el.mpHud) return;
+    this.el.mpHud.classList.toggle('hidden', count < 2);
+    if (count >= 2) this.el.mpHud.textContent = `● ${count} players`;
+  }
+
+  _buildMultiplayer() {
+    const view = this.mpView;
+    this.openModal('Multiplayer', (body) => {
+      this.mpKind = 'multiplayer';
+      body.append(
+        el('p', 'mp-intro', 'Play with someone else — no server, no account, no install.'),
+      );
+
+      const status = el('div', `mp-status ${view.statusKind || 'idle'}`, view.status || 'Not connected');
+      status.setAttribute('role', 'status');
+      body.append(status);
+
+      if (view.players.length) {
+        body.append(el('div', 'mp-players', `In this session: you, ${view.players.join(', ')}`));
+      }
+
+      const nameRow = el('div', 'seed-input-row mp-row');
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.maxLength = 16;
+      nameInput.placeholder = 'Your name';
+      nameInput.value = view.name || '';
+      nameInput.setAttribute('aria-label', 'Your player name');
+      nameInput.addEventListener('input', () => {
+        view.name = nameInput.value;
+        this.callbacks.onMpName?.(nameInput.value);
+      });
+      nameRow.append(el('span', 'mp-label', 'Name'), nameInput);
+      body.append(nameRow);
+
+      body.append(el('h3', 'mp-heading', 'Same browser'));
+      body.append(
+        el(
+          'p',
+          'mp-hint',
+          'Open this page in a second tab or window, join the same room there, and you will appear in each other’s worlds.',
+        ),
+      );
+      const roomRow = el('div', 'seed-input-row mp-row');
+      const roomInput = document.createElement('input');
+      roomInput.type = 'text';
+      roomInput.maxLength = 24;
+      roomInput.value = view.room || 'coop';
+      roomInput.setAttribute('aria-label', 'Room name');
+      roomInput.addEventListener('input', () => {
+        view.room = roomInput.value;
+      });
+      const joinBtn = el('button', 'mc-button small primary', 'Join room');
+      joinBtn.type = 'button';
+      joinBtn.addEventListener('click', () => {
+        this.callbacks.onUiSound?.();
+        view.room = roomInput.value.trim() || 'coop';
+        this.callbacks.onMpJoinRoom?.(view.room, nameInput.value.trim());
+      });
+      roomRow.append(el('span', 'mp-label', 'Room'), roomInput, joinBtn);
+      body.append(roomRow);
+
+      body.append(el('h3', 'mp-heading', 'Invite a friend (peer-to-peer)'));
+      body.append(
+        el(
+          'p',
+          'mp-hint',
+          'Works across the internet with no server: create an invite, send the code to your friend, then paste their answer back here.',
+        ),
+      );
+      const hostBtn = el('button', 'mc-button small', 'Create invite code');
+      hostBtn.type = 'button';
+      hostBtn.addEventListener('click', () => {
+        this.callbacks.onUiSound?.();
+        this.callbacks.onMpHost?.(nameInput.value.trim());
+      });
+      body.append(hostBtn);
+
+      if (view.offer) {
+        body.append(el('span', 'mp-label', '1 · Send this invite code'));
+        body.append(this._mpCode(view.offer));
+        body.append(el('span', 'mp-label', '2 · Paste your friend’s answer code'));
+        const answer = this._mpPaste(view.answer, 'Paste the answer code…', (value) => {
+          view.answer = value;
+        });
+        const connect = el('button', 'mc-button small primary', 'Finish connection');
+        connect.type = 'button';
+        connect.addEventListener('click', () => {
+          this.callbacks.onUiSound?.();
+          this.callbacks.onMpAcceptAnswer?.(answer.value.trim());
+        });
+        body.append(answer, connect);
+      }
+
+      body.append(el('span', 'mp-label', 'Joining a friend? Paste their invite code'));
+      const invite = this._mpPaste(view.invite, 'Paste the invite code…', (value) => {
+        view.invite = value;
+      });
+      const answerBtn = el('button', 'mc-button small', 'Create answer code');
+      answerBtn.type = 'button';
+      answerBtn.addEventListener('click', () => {
+        this.callbacks.onUiSound?.();
+        view.invite = invite.value;
+        this.callbacks.onMpJoinInvite?.(invite.value.trim(), nameInput.value.trim());
+      });
+      body.append(invite, answerBtn);
+
+      if (view.answerOut) {
+        body.append(el('span', 'mp-label', 'Send this answer code back to the host'));
+        body.append(this._mpCode(view.answerOut));
+      }
+
+      if (view.connected || ['connected', 'waiting', 'connecting'].includes(view.statusKind)) {
+        const leave = el('button', 'mc-button small danger', 'Leave session');
+        leave.type = 'button';
+        leave.addEventListener('click', () => {
+          this.callbacks.onUiSound?.();
+          this.callbacks.onMpLeave?.();
+        });
+        body.append(leave);
+      }
+
+      body.append(
+        el(
+          'div',
+          'controls-note',
+          'Multiplayer worlds are temporary: your single-player save is left untouched and comes back when you leave.',
+        ),
+      );
+    });
+  }
+
+  _mpCode(value) {
+    const wrap = el('div', 'mp-code-wrap');
+    const area = document.createElement('textarea');
+    area.className = 'mp-code';
+    area.readOnly = true;
+    area.rows = 3;
+    area.spellcheck = false;
+    area.value = value;
+    area.addEventListener('focus', () => area.select());
+    const copy = el('button', 'mc-button small', 'Copy');
+    copy.type = 'button';
+    copy.addEventListener('click', () => {
+      area.select();
+      const done = () => this.toast('Code copied');
+      if (navigator.clipboard?.writeText) navigator.clipboard.writeText(value).then(done, () => done());
+      else done();
+    });
+    wrap.append(area, copy);
+    return wrap;
+  }
+
+  _mpPaste(value, placeholder, onChange) {
+    const area = document.createElement('textarea');
+    area.className = 'mp-code';
+    area.rows = 3;
+    area.spellcheck = false;
+    area.placeholder = placeholder;
+    area.value = value || '';
+    area.addEventListener('input', () => onChange(area.value));
+    return area;
   }
 
   /* ------------------------------------------------------------------ */
@@ -553,6 +860,10 @@ export class UI {
     this.inventoryOpen = true;
     this.el.inventory.classList.remove('hidden');
     this.setSelectedSlot(selected);
+    setTimeout(() => {
+      const first = this.el.inventoryGrid.querySelector('.block-cell');
+      if (first) first.focus({ preventScroll: true });
+    }, 0);
   }
 
   closeInventory() {

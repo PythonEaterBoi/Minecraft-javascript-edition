@@ -8,6 +8,11 @@ const MOVEMENT_KEYS = new Set([
   'Space',
   'ShiftLeft',
   'ShiftRight',
+  // Arrow keys are the keyboard look controls, so they must not scroll.
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
 ]);
 
 export class Input {
@@ -137,16 +142,27 @@ export class Input {
     return { x, y };
   }
 
-  /** Player intent for this frame. */
+  /** Player intent for this frame (WASD; the arrows are look keys). */
   getMoveState() {
     return {
-      forward: this.keys.has('KeyW') || this.keys.has('ArrowUp'),
-      back: this.keys.has('KeyS') || this.keys.has('ArrowDown'),
-      left: this.keys.has('KeyA') || this.keys.has('ArrowLeft'),
-      right: this.keys.has('KeyD') || this.keys.has('ArrowRight'),
+      forward: this.keys.has('KeyW'),
+      back: this.keys.has('KeyS'),
+      left: this.keys.has('KeyA'),
+      right: this.keys.has('KeyD'),
       jump: this.keys.has('Space'),
       descend: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.keys.has('KeyC'),
       sprint: this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'),
     };
+  }
+
+  /** Arrow-key look direction as -1..1 values, consumed each frame. */
+  getLookKeys() {
+    let yaw = 0;
+    let pitch = 0;
+    if (this.keys.has('ArrowLeft')) yaw += 1;
+    if (this.keys.has('ArrowRight')) yaw -= 1;
+    if (this.keys.has('ArrowUp')) pitch += 1;
+    if (this.keys.has('ArrowDown')) pitch -= 1;
+    return { yaw, pitch };
   }
 }

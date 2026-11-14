@@ -58,6 +58,15 @@ export class Player {
     if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
   }
 
+  /** Turn the camera directly (keyboard look, without a mouse). */
+  turn(dYaw, dPitch) {
+    this.yaw += dYaw;
+    if (this.yaw > Math.PI) this.yaw -= Math.PI * 2;
+    if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
+    const limit = Math.PI / 2 - 0.001;
+    this.pitch = Math.max(-limit, Math.min(limit, this.pitch + dPitch));
+  }
+
   /** Does the player's AABB intersect this block cell? */
   intersectsBlock(x, y, z) {
     const r = this.radius;

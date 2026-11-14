@@ -2,6 +2,8 @@
 
 A fan-made, Minecraft-style voxel sandbox that runs entirely in the browser. No Java, no
 build step, no bundler, no server-side code — just static files you can drop on GitHub Pages.
+Play it solo, or play it with a friend: same-browser rooms and serverless peer-to-peer
+invites are built in.
 
 ![Gameplay](screenshots/gameplay.jpg)
 
@@ -15,6 +17,7 @@ see [Running locally](#running-locally).
 ## Contents
 
 - [What you can do](#what-you-can-do)
+- [Multiplayer](#multiplayer)
 - [Controls](#controls)
 - [Running locally](#running-locally)
 - [Deploying to GitHub Pages](#deploying-to-github-pages)
@@ -36,12 +39,64 @@ see [Running locally](#running-locally).
   clouds and colour-matched fog.
 - **Pick up where you left off** — the world, your inventory and your exact position are
   saved in `localStorage` (autosave every 20 seconds, plus on pause/quit).
+- **Play with a friend** — join a room in a second tab, or send a peer-to-peer invite code to
+  someone on the other side of the internet. No server, no accounts.
+- **Never need a mouse** — the whole game, including the menus, is playable from the keyboard.
 - **Play on a phone or tablet** — on-screen joystick, drag-to-look and buttons for jumping,
   mining, placing, flying and the block picker.
 - **Zero runtime downloads** — textures are painted procedurally into an atlas at boot, the
   sound effects are synthesized with the Web Audio API, and Three.js is vendored in the repo.
 
-![Title screen](screenshots/title.jpg)
+![Multiplayer](screenshots/multiplayer.jpg)
+
+## Multiplayer
+
+Open **Multiplayer** from the title screen or the pause menu. Both players keep their own
+name (remembered in `localStorage`) and see a box avatar with a name tag above the head.
+
+![Multiplayer menu](screenshots/multiplayer-menu.jpg)
+
+### Same browser (rooms)
+
+Two tabs or windows of the same browser can play together with no setup at all:
+
+1. In one tab: **Multiplayer** → type a room name → **Join room**.
+2. In the second tab: **Multiplayer** → the same room name → **Join room**.
+3. The second tab loads the first tab's world — same seed, same block edits, same time of day.
+
+Rooms use `BroadcastChannel`, so they only reach tabs of the same browser on the same
+machine. For anything further away, use an invite.
+
+### Across the internet (peer-to-peer)
+
+The invite flow is a direct WebRTC connection — no server relays your world, and nothing is
+uploaded anywhere. The "codes" are base64 SDP blobs, so they are long — that is normal.
+
+1. **Host:** *Create invite code* and copy the code it shows.
+2. Send that code to your friend however you like (chat, email, carrier pigeon).
+3. **Friend:** paste it under *Joining a friend?* and press **Create answer code**.
+4. The friend sends the answer code back.
+5. **Host:** paste it under *2 · Paste your friend's answer code* and press
+   **Finish connection**.
+6. Both screens show *Connected* and you are in the same world.
+
+If a connection cannot be established, one of the two networks is probably blocking direct
+peer traffic (symmetric NAT); the game tries a public STUN server but there is no TURN relay
+to fall back on.
+
+### What is shared
+
+| Shared | Details |
+| --- | --- |
+| World | The host's seed and every block edit are sent when you join, and edits made by either player afterwards appear for both. |
+| Players | Position, look direction and flight state, ten times a second, drawn as interpolated avatars. |
+| Time of day | The host owns the clock, so sunsets line up. |
+| Names | Each player's chosen name, shown above their avatar and in the session list. |
+
+Sessions are temporary by design: joining someone else's world does not touch your own
+save, and your single-player world is exactly as you left it when you leave. The **● n
+players** badge in the corner shows the session size; **Leave session** in the multiplayer
+menu tears it down.
 
 ## Controls
 
@@ -49,11 +104,14 @@ see [Running locally](#running-locally).
 
 | Input | Action |
 | --- | --- |
-| `W` `A` `S` `D` / arrow keys | Move |
+| `W` `A` `S` `D` | Move |
+| `←` `→` `↑` `↓` | Look around (keyboard look) |
 | Mouse | Look around (click **Play** to capture the mouse) |
 | Left click | Break block (hold to keep breaking) |
 | Right click | Place block |
 | Middle click | Pick the targeted block into the hotbar |
+| `V` | Break block (keyboard) — tap or hold |
+| `B` | Place block (keyboard) — tap or hold |
 | `Space` | Jump · swim up · fly up |
 | `Shift` | Sprint · fly down · dive while swimming |
 | `F` | Toggle flight |
@@ -63,8 +121,26 @@ see [Running locally](#running-locally).
 | `F3` | Debug overlay (position, chunk, biome, FPS) |
 | `Esc` | Pause (also releases the mouse) |
 
+The arrow keys turn the camera, so the whole game is playable without touching the mouse:
+walk with `WASD`, look with the arrows, dig with `V`, build with `B`.
+
 The **Settings** menu has render distance, mouse sensitivity, sound, clouds and the
 day/night cycle; settings are remembered between visits.
+
+### Menus from the keyboard
+
+Every screen works without a mouse as well:
+
+| Input | Action |
+| --- | --- |
+| `↑` `↓` / `←` `→` | Move between buttons and fields |
+| `Home` / `End` | Jump to the first / last item |
+| `Enter` / `Space` | Press the focused button |
+| `Esc` | Close the menu or go back |
+| `Enter` / `Space` (nothing focused) | Resume from the pause screen |
+
+Focus is moved for you when a menu opens, so **Esc** then **Enter** resumes a paused game
+without clicking, and the pause → **Multiplayer** screen is three arrow presses away.
 
 ### Touch
 
@@ -117,6 +193,7 @@ Everything is committed in the form Pages needs:
 | Player | Axis-aligned bounding box with swept collision, walking/sprinting/jumping, swimming and creative flight. |
 | Sky | Gradient dome with sun, moon, stars, clouds on a drifting plane, plus fog that matches the horizon. |
 | Audio | Short synthesized effects (dig, place, step, click) built with oscillators and noise buffers. |
+| Multiplayer | `BroadcastChannel` rooms for same-browser play and an `RTCDataChannel` for invite-based play. The host is authoritative for the world, edits and the clock; joiners adopt its seed and edit list. |
 | Persistence | One save slot in `localStorage`: seed, time, position, rotation, hotbar and block edits. |
 
 ## Project layout
@@ -131,6 +208,7 @@ src/main.js             Game class: renderer, loop, state machine, save/load
   src/render/           sky dome, clouds, fog
   src/ui/               menus, HUD, hotbar, inventory, settings
   src/audio/            Web Audio sound effects
+  src/net/              multiplayer session (rooms, WebRTC invites) and remote avatars
 vendor/three/           Three.js r187 (MIT) + licence
 screenshots/            images used by this README
 ```
@@ -141,9 +219,11 @@ screenshots/            images used by this README
 | --- | --- |
 | `mje.save.v1` | Seed, time of day, player position/rotation, flight state, hotbar and block edits. |
 | `mje.settings.v1` | Render distance, sensitivity and the sound/clouds/day-cycle toggles. |
+| `mje.name.v1` | The player name used in multiplayer. |
 
 **New World** replaces the current save; **Save & Quit to Title** writes it immediately.
-Clearing site data in the browser starts over with the default seed.
+Clearing site data in the browser starts over with the default seed. Multiplayer worlds are
+never written to the save slot.
 
 ## Performance tips
 
@@ -158,6 +238,9 @@ Clearing site data in the browser starts over with the default seed.
 Any browser with **WebGL 2** and ES modules: current Chrome, Edge, Firefox and Safari
 (desktop and mobile). If WebGL is unavailable the page shows a readable explanation instead
 of a blank canvas. Pointer lock is used on desktop; touch devices get the on-screen controls.
+Multiplayer needs `BroadcastChannel` (rooms) or WebRTC data channels (invites) — both are
+available in all of those browsers, but WebRTC invites require the page to be served over
+`https://` or `localhost`, which GitHub Pages provides.
 `prefers-reduced-motion` is respected by the menus and animations.
 
 ## Credits

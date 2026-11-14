@@ -11,6 +11,8 @@ import { raycast } from './player/raycast.js';
 import { Sky } from './render/sky.js';
 import { UI } from './ui/ui.js';
 import { Sfx } from './audio/sfx.js';
+import { MultiplayerSession } from './net/session.js';
+import { RemotePlayers } from './net/remotes.js';
 import { B, BLOCKS, DEFAULT_HOTBAR } from './world/blocks.js';
 import { CHUNK_HEIGHT, MAX_RENDER_DISTANCE } from './world/constants.js';
 
@@ -62,11 +64,20 @@ class Game {
     this.stepDistance = 0;
     this.bobPhase = 0;
     this.pendingNewWorld = false;
+    this.pendingJoin = false;
+    this.noSave = false;
+    this.net = null;
+    this.mpRole = null;
+    this.mpName = this.loadProfileName();
+    this.mpSendTimer = 0;
+    this.mpTimeTimer = 0;
+    this.mpPeers = [];
 
     this.setupRenderer();
     this.setupScene();
     this.setupInput();
     this.setupUI();
+    this.setupMultiplayer();
     this.setupHighlight();
     this.bindWindowEvents();
     this.loadOrCreateWorld();
@@ -123,6 +134,7 @@ class Game {
     };
 
     this.sky = new Sky(this.scene);
+    this.remotePlayers = new RemotePlayers(this.scene);
   }
 
   setupHighlight() {
@@ -288,7 +300,8 @@ class Game {
 
   startNewWorld(seedText) {
     const seed = seedFromString(seedText);
-    this.saveGame();
+    if (this.net) this.disconnectSession();
+    else this.saveGame();
     this.state = 'loading';
     this.input.enabled = false;
     this.input.exitLock();
@@ -303,6 +316,10 @@ class Game {
   }
 
   quitToTitle() {
+    if (this.net) {
+      this.leaveMultiplayer();
+      return;
+    }
     this.saveGame();
     this.state = 'title';
     this.ui.hidePause();
@@ -408,6 +425,240 @@ class Game {
     }
   }
 
+
+  /* ------------------------------------------------------------------ */
+  /* Multiplayer                                                         */
+  /* ------------------------------------------------------------------ */
+
+  loadProfileName() {
+    try {
+      const stored = localStorage.getItem('mje.name.v1');
+      if (stored && stored.trim()) return stored.trim().slice(0, 16);
+    } catch {
+      /* storage can be unavailable in private modes */
+    }
+    return `Player${Math.floor(10 + Math.random() * 90)}`;
+  }
+
+  setPlayerName(name) {
+    const clean = String(name || '').trim().slice(0, 16);
+    if (!clean) return;
+    this.mpName = clean;
+    try {
+      localStorage.setItem('mje.name.v1', clean);
+    } catch {
+      /* ignore */
+    }
+    if (this.net) this.net.setName(clean);
+  }
+
+  setupMultiplayer() {
+    this.ui.setCallbacks({
+      onMpJoinRoom: (room, name) => this.joinLocalSession(room, name),
+      onMpHost: (name) => this.createInvite(name),
+      onMpAcceptAnswer: (code) => this.finishInvite(code),
+      onMpJoinInvite: (code, name) => this.joinWithInvite(code, name),
+      onMpLeave: () => this.leaveMultiplayer(),
+      onMpName: (name) => this.setPlayerName(name),
+      onMpOpen: () => this.openMultiplayerPanel(),
+    });
+  }
+
+  openMultiplayerPanel() {
+    this.ui.openMultiplayer({
+      name: this.mpName,
+      status: this.net ? this.net.statusText : 'Not connected',
+      statusKind: this.net ? this.net.statusState : 'idle',
+      players: this.mpPeers.map((peer) => peer.name),
+      connected: !!this.net,
+    });
+  }
+
+  createSession() {
+    this.disconnectSession();
+    const session = new MultiplayerSession({
+      getWorldSnapshot: () => this.worldSnapshot(),
+      onStatus: ({ state, text }) => this.ui.setMultiplayerStatus(state, text),
+      onPeers: (peers) => {
+        this.mpPeers = peers;
+        this.ui.setMultiplayerPlayers(peers);
+        this.ui.setMultiplayerHud(peers.length + 1);
+      },
+      onPeerJoin: (peer) => {
+        this.remotePlayers.add(peer.id, peer.name);
+        this.ui.toast(`${peer.name} joined`, 2600);
+      },
+      onPeerName: (peer) => this.remotePlayers.rename(peer.id, peer.name),
+      onPeerLeave: (peer) => {
+        this.remotePlayers.remove(peer.id);
+        this.ui.toast(`${peer.name} left`, 2600);
+      },
+      onWorld: (snapshot) => this.adoptMultiplayerWorld(snapshot),
+      onState: (id, state) => this.remotePlayers.setState(id, state),
+      onEdit: (edit) => this.applyRemoteEdit(edit),
+      onTime: (t) => {
+        if (Number.isFinite(t)) this.timeOfDay = t;
+      },
+      onDisconnect: () => this.ui.toast('Your friend disconnected.', 4000),
+    });
+    this.net = session;
+    return session;
+  }
+
+  disconnectSession() {
+    if (!this.net) return;
+    this.net.leave();
+    this.net = null;
+    this.mpRole = null;
+    this.noSave = false;
+    this.remotePlayers.clear();
+    this.ui.setMultiplayerHud(0);
+    this.ui.setMultiplayerPlayers([]);
+  }
+
+  joinLocalSession(room, name) {
+    this.setPlayerName(name);
+    const session = this.createSession();
+    this.mpRole = 'local';
+    this.noSave = true; // two tabs must not fight over the same save slot
+    session.joinRoom(room || 'coop', this.mpName);
+    this.ui.openMultiplayer({
+      name: this.mpName,
+      room: room || 'coop',
+      status: session.statusText,
+      statusKind: 'waiting',
+      players: [],
+      connected: true,
+    });
+  }
+
+  async createInvite(name) {
+    this.setPlayerName(name);
+    const session = this.createSession();
+    this.mpRole = 'host';
+    this.noSave = true;
+    try {
+      const offer = await session.hostOffer(this.mpName);
+      this.ui.updateMultiplayer({ offer, status: session.statusText, statusKind: 'waiting' });
+      return offer;
+    } catch {
+      this.ui.setMultiplayerStatus('error', 'Could not create an invite in this browser.');
+      return '';
+    }
+  }
+
+  async finishInvite(code) {
+    if (!this.net) return;
+    try {
+      await this.net.acceptAnswer(code);
+      this.ui.setMultiplayerStatus('connecting', 'Connecting…');
+    } catch {
+      this.ui.setMultiplayerStatus('error', 'That answer code could not be read. Check you pasted all of it.');
+    }
+  }
+
+  async joinWithInvite(code, name) {
+    this.setPlayerName(name);
+    const session = this.createSession();
+    this.mpRole = 'guest';
+    this.noSave = true;
+    try {
+      const answer = await session.acceptOffer(code, this.mpName);
+      this.ui.updateMultiplayer({ answerOut: answer, status: session.statusText, statusKind: 'waiting' });
+      return answer;
+    } catch {
+      this.ui.setMultiplayerStatus('error', 'That invite code could not be read. Check you pasted all of it.');
+      return '';
+    }
+  }
+
+  worldSnapshot() {
+    if (!this.world || !this.player) return null;
+    return {
+      v: 1,
+      seed: this.world.seed,
+      time: this.timeOfDay,
+      edits: this.world.serializeEdits(),
+      player: {
+        x: this.player.pos.x,
+        y: this.player.pos.y,
+        z: this.player.pos.z,
+        yaw: this.player.yaw,
+        pitch: this.player.pitch,
+      },
+      name: this.mpName,
+    };
+  }
+
+  adoptMultiplayerWorld(snapshot) {
+    if (!snapshot || !Number.isFinite(snapshot.seed)) return;
+    this.mpRole = 'guest';
+    this.noSave = true;
+    this.ui.closeModal();
+    this.ui.hideTitle();
+    this.ui.hidePause();
+    this.ui.hideHud();
+    this.input.enabled = false;
+    this.input.exitLock();
+    this.remotePlayers.clear();
+
+    this.timeOfDay = Number.isFinite(snapshot.time) ? snapshot.time : 0.38;
+    this.state = 'loading';
+    this.pendingJoin = true;
+    this.createWorld(snapshot.seed, null);
+    if (Array.isArray(snapshot.edits)) this.world.loadEdits(snapshot.edits);
+
+    const spot = snapshot.player || {};
+    this.player.teleportTo(
+      Number.isFinite(spot.x) ? spot.x : 0.5,
+      Number.isFinite(spot.y) ? spot.y + 0.05 : 70,
+      Number.isFinite(spot.z) ? spot.z : 0.5,
+    );
+    this.player.yaw = Number.isFinite(spot.yaw) ? spot.yaw : 0;
+    this.player.pitch = Number.isFinite(spot.pitch) ? spot.pitch : 0;
+    this.freshSpawn = false;
+
+    this.ui.showLoading('Joining world…');
+    this.ui.setLoading(0.02, `seed ${snapshot.seed} · syncing blocks`);
+    this.ui.setSeed(snapshot.seed);
+    this.ui.toast(`Joining ${snapshot.name || 'your friend'}'s world…`, 3000);
+  }
+
+  applyRemoteEdit(edit) {
+    if (!this.world || !edit) return;
+    const x = Math.round(edit.x);
+    const y = Math.round(edit.y);
+    const z = Math.round(edit.z);
+    const id = edit.id;
+    if (![x, y, z, id].every(Number.isInteger)) return;
+    if (y < 0 || y >= CHUNK_HEIGHT || !BLOCKS[id]) return;
+    if (this.world.getBlock(x, y, z) === id) return;
+    if (this.world.setBlock(x, y, z, id)) {
+      this.saveDirty = true;
+      this.updateTarget();
+    }
+  }
+
+  broadcastEdit(x, y, z, id) {
+    this.net?.sendEdit({ x, y, z, id });
+  }
+
+  leaveMultiplayer() {
+    if (!this.net) return;
+    this.pendingJoin = false;
+    this.ui.hideLoading();
+    this.disconnectSession();
+    this.ui.closeModal();
+    this.ui.hideHud();
+    this.ui.hidePause();
+    this.input.enabled = false;
+    this.input.exitLock();
+    this.state = 'title';
+    this.loadOrCreateWorld();
+    this.ui.showTitle();
+    this.ui.toast('Left the multiplayer session — your own world is back');
+  }
+
   /* ------------------------------------------------------------------ */
   /* Input handling                                                      */
   /* ------------------------------------------------------------------ */
@@ -415,6 +666,9 @@ class Game {
   handleAction(type, event) {
     if (type === 'keyup') return;
     const code = event.code;
+
+    // Keyboard-only menus: arrow keys move focus, Enter/Space activate.
+    if (this.state !== 'playing' && this.ui.handleKeyNav(event)) return;
 
     if (this.ui.modalOpen) {
       if (code === 'Escape') {
@@ -436,12 +690,18 @@ class Game {
       if (code === 'Escape') {
         event.preventDefault();
         this.resume();
+      } else if ((code === 'Enter' || code === 'Space') && (!document.activeElement || document.activeElement === document.body)) {
+        event.preventDefault();
+        this.resume();
       }
       return;
     }
 
     if (this.state === 'title') {
-      if (code === 'Enter' && this.worldReady) this.play();
+      const focused = document.activeElement;
+      if ((code === 'Enter' || code === 'Space') && this.worldReady && (!focused || focused === document.body)) {
+        this.play();
+      }
       return;
     }
 
@@ -460,6 +720,16 @@ class Game {
         break;
       case 'KeyF':
         this.toggleFly();
+        break;
+      case 'KeyV':
+        event.preventDefault();
+        this.breakBlock();
+        this.lastBreak = performance.now();
+        break;
+      case 'KeyB':
+        event.preventDefault();
+        this.placeBlock();
+        this.lastPlace = performance.now();
         break;
       case 'F3':
         event.preventDefault();
@@ -561,6 +831,7 @@ class Game {
       this.sfx.breakBlock(id);
       this.ui.swingHand();
       this.saveDirty = true;
+      this.broadcastEdit(target.x, target.y, target.z, B.AIR);
       this.updateTarget();
     }
   }
@@ -581,6 +852,7 @@ class Game {
       this.sfx.placeBlock(id);
       this.ui.swingHand();
       this.saveDirty = true;
+      this.broadcastEdit(px, py, pz, id);
       this.updateTarget();
     }
   }
@@ -591,6 +863,8 @@ class Game {
 
   saveGame(notify = false) {
     if (!this.world || !this.player) return;
+    // Multiplayer worlds are temporary: never overwrite the single-player save.
+    if (this.noSave) return;
     try {
       const data = {
         version: 1,
@@ -651,10 +925,15 @@ class Game {
       this.timeOfDay = (this.timeOfDay + dt / this.dayLength) % 1;
     }
 
-    // Look.
-    if (playing && (this.input.locked || touch)) {
+    // Look: mouse deltas when captured, plus the arrow keys at all times, so
+    // the game is fully playable from the keyboard alone.
+    if (playing && this.player) {
       const look = this.input.consumeLook();
       if (look.x || look.y) this.player.look(look.x, look.y);
+      const keys = this.input.getLookKeys();
+      if (keys.yaw || keys.pitch) {
+        this.player.turn(keys.yaw * 2.3 * dt, keys.pitch * 1.6 * dt);
+      }
     }
 
     // Movement.
@@ -692,16 +971,36 @@ class Game {
 
       // Continuous breaking/placing.
       const now = performance.now();
-      if (this.input.mouseDown.has(0) && now - this.lastBreak > 190) {
+      if ((this.input.mouseDown.has(0) || this.input.isDown('KeyV')) && now - this.lastBreak > 190) {
         this.breakBlock();
         this.lastBreak = now;
       }
-      if (this.input.mouseDown.has(2) && now - this.lastPlace > 190) {
+      if ((this.input.mouseDown.has(2) || this.input.isDown('KeyB')) && now - this.lastPlace > 190) {
         this.placeBlock();
         this.lastPlace = now;
       }
 
       this.updateTarget();
+
+      if (this.net) {
+        this.mpSendTimer += dt;
+        if (this.mpSendTimer >= 0.09) {
+          this.mpSendTimer = 0;
+          this.net.sendState({
+            p: [this.player.pos.x, this.player.pos.y, this.player.pos.z],
+            yaw: this.player.yaw,
+            pitch: this.player.pitch,
+            flying: this.player.flying,
+          });
+        }
+        if (this.net.isAuthority()) {
+          this.mpTimeTimer += dt;
+          if (this.mpTimeTimer >= 5) {
+            this.mpTimeTimer = 0;
+            this.net.sendTime(this.timeOfDay);
+          }
+        }
+      }
     } else {
       this.highlight.visible = false;
       if (this.state === 'title') this.titleSpin += dt * 0.045;
@@ -739,6 +1038,29 @@ class Game {
           this.ui.toast(`New world created · seed ${this.world.seed}`, 3000);
         }
       }
+
+      if (this.pendingJoin) {
+        const progress = this.world.getLoadProgress(this.player.pos.x, this.player.pos.z);
+        this.ui.setLoading(Math.max(0.02, progress), `seed ${this.world.seed} · ${Math.round(progress * 100)}%`);
+        if (progress >= 0.985) {
+          this.pendingJoin = false;
+          this.worldReady = true;
+          this.freshSpawn = false;
+          this.adjustSpawn();
+          this.ui.hideLoading();
+          this.state = 'playing';
+          this.ui.showHud();
+          this.input.enabled = true;
+          this.ui.setPlayProgress(1);
+          this.ui.toast('You are in the shared world — build together!', 3200);
+          this.net?.sendState({
+            p: [this.player.pos.x, this.player.pos.y, this.player.pos.z],
+            yaw: this.player.yaw,
+            pitch: this.player.pitch,
+            flying: this.player.flying,
+          });
+        }
+      }
     }
 
     // Camera.
@@ -759,6 +1081,7 @@ class Game {
     this.materials.opaque.color.setRGB(light, light * (0.97 + 0.03 * warm), light * 0.98);
     this.materials.water.color.setRGB(light * 0.95, light * 0.98, light);
     this.materials.glass.color.setRGB(light, light, light);
+    this.remotePlayers.update(dt, light);
     this.renderer.setClearColor(this.scene.fog.color, 1);
 
     // Debug overlay.
