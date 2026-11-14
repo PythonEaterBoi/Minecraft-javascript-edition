@@ -120,8 +120,8 @@ speed, so the right tool is dramatically faster; using the wrong one costs you.
 | Gold | 12× | 32 | 7 |
 | Diamond | 8× | 1561 | 9 |
 
-Ores are tiered like the real thing: coal and copper only need wood, iron and lapis need
-stone, gold, redstone, diamond and emerald need iron. Ores are placed in veins by depth, so
+Ores are tiered like the real thing: coal only needs a wooden pickaxe, copper, iron and lapis
+need stone, and gold, redstone, diamond and emerald need iron (obsidian needs diamond). Ores are placed in veins by depth, so
 dig down (and bring torches) to find the good stuff. Broken blocks drop themselves or their
 items — stone gives cobblestone, ores give raw material, grass gives dirt.
 
