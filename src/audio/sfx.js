@@ -116,6 +116,19 @@ export class Sfx {
     this._tone(220, 0.3, 'sine', 0.06, -120);
   }
 
+  hurt() {
+    if (!this.ready) return;
+    this._noise(0.18, 'bandpass', 500 + Math.random() * 120, 0.5);
+    this._tone(180, 0.16, 'sawtooth', 0.12, -90);
+  }
+
+  eat() {
+    if (!this.ready) return;
+    for (let i = 0; i < 3; i++) {
+      this._noise(0.07, 'lowpass', 700 + i * 120, 0.35);
+    }
+  }
+
   click() {
     if (!this.ready) return;
     this._tone(660, 0.05, 'square', 0.05, 80);

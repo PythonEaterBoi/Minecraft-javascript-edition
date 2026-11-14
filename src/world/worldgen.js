@@ -134,16 +134,45 @@ export class WorldGenerator {
           } else if (depth <= fillerDepth + deepStart) {
             id = deep;
           } else {
-            id = B.STONE;
+            // Deepslate below the stone line, with the same ores inside it.
+            const deepslate = y < 20;
+            id = deepslate ? B.DEEPSLATE : B.STONE;
             const r = rand3(wx, y, wz, seed + 999);
-            if (y < 14 && r < 0.0018) id = B.DIAMOND_ORE;
-            else if (y < 28 && r < 0.0048) id = B.GOLD_ORE;
-            else if (y < 46 && r < 0.013) id = B.IRON_ORE;
-            else if (r < 0.026) id = B.COAL_ORE;
+            if (y < 14 && r < 0.0022) id = B.DIAMOND_ORE;
+            else if (y < 16 && r > 0.994) id = B.REDSTONE_ORE;
+            else if (y < 24 && r > 0.9915) id = B.LAPIS_ORE;
+            else if (y < 20 && r > 0.9988) id = B.EMERALD_ORE;
+            else if (y < 30 && r > 0.9952) id = B.GOLD_ORE;
+            else if (y < 46 && r > 0.985) id = B.IRON_ORE;
+            else if (y < 60 && r > 0.9765) id = B.COPPER_ORE;
+            else if (r < 0.028) id = B.COAL_ORE;
             else if (r > 0.982) id = B.GRAVEL;
             else if (r > 0.972) id = B.DIRT;
+            else {
+              // Granite / diorite / andesite pockets.
+              const pocket = noise3(wx * 0.055, y * 0.055, wz * 0.055, seed + 1201);
+              if (pocket > 0.72) id = B.GRANITE;
+              else if (pocket < 0.19) id = B.DIORITE;
+              else if (pocket > 0.63 && pocket < 0.66) id = B.ANDESITE;
+            }
           }
           blocks[(y << 8) | (lz << 4) | lx] = id;
+        }
+
+        // Surface dressing: coarse dirt, podzol and clay in the right places.
+        if (top === B.GRASS) {
+          const patch = rand3(wx, 0, wz, seed + 1301);
+          if (patch < 0.012) {
+            blocks[(h << 8) | (lz << 4) | lx] = B.COARSE_DIRT;
+          } else if (patch < 0.03 && this.humidityAt(wx, wz) > 0.2) {
+            blocks[(h << 8) | (lz << 4) | lx] = B.PODZOL;
+          }
+          if (h <= SEA_LEVEL + 2 && patch > 0.985) {
+            for (let d = 0; d < 2; d++) blocks[((h - d) << 8) | (lz << 4) | lx] = B.CLAY;
+          }
+        }
+        if (top === B.SAND && biome === BIOME.DESERT && rand3(wx, 0, wz, seed + 1302) < 0.08) {
+          blocks[(h << 8) | (lz << 4) | lx] = B.RED_SAND;
         }
 
         // Water bodies and frozen surfaces.
@@ -174,6 +203,7 @@ export class WorldGenerator {
     }
 
     this.stampTrees(chunk);
+    this.stampPlants(chunk);
     if (edits) chunk.applyEdits(edits);
     chunk.recomputeHeightMap();
     chunk.generated = true;
@@ -299,6 +329,50 @@ export class WorldGenerator {
     }
     // a little tuft above the trunk
     this.setLocal(chunk, lx, top + 2, lz, leaf, true);
+  }
+
+  /** Flowers, grass, mushrooms, pumpkins and dead bushes on the surface. */
+  stampPlants(chunk) {
+    const baseX = chunk.cx * CHUNK_SIZE;
+    const baseZ = chunk.cz * CHUNK_SIZE;
+    const seed = this.seed;
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const wx = baseX + lx;
+        const wz = baseZ + lz;
+        const h = Math.floor(this.heightAt(wx, wz));
+        if (h < SEA_LEVEL || h >= CHUNK_HEIGHT - 4) continue;
+        const index = ((h + 1) << 8) | (lz << 4) | lx;
+        if (chunk.blocks[index] !== B.AIR) continue;
+        const ground = chunk.blocks[(h << 8) | (lz << 4) | lx];
+        const biome = this.biomeAt(wx, wz);
+        const r = rand2(wx, wz, seed + 4321);
+
+        if (biome === BIOME.DESERT) {
+          if (ground === B.SAND && r < 0.004) chunk.blocks[index] = B.DEAD_BUSH;
+          continue;
+        }
+        if (ground === B.SAND || ground === B.SNOW) continue;
+
+        if (ground === B.PODZOL || (biome === BIOME.FOREST && r > 0.985)) {
+          chunk.blocks[index] = r < 0.5 ? B.MUSHROOM_RED : B.MUSHROOM_BROWN;
+          continue;
+        }
+        if (ground !== B.GRASS) continue;
+
+        if (biome === BIOME.PLAINS) {
+          if (r < 0.16) chunk.blocks[index] = B.TALL_GRASS;
+          else if (r < 0.178) chunk.blocks[index] = r < 0.169 ? B.FLOWER_YELLOW : B.FLOWER_RED;
+          else if (r > 0.9975) chunk.blocks[index] = B.PUMPKIN;
+        } else if (biome === BIOME.FOREST) {
+          if (r < 0.1) chunk.blocks[index] = B.TALL_GRASS;
+          else if (r < 0.107) chunk.blocks[index] = r < 0.103 ? B.FLOWER_RED : B.FLOWER_YELLOW;
+          else if (r > 0.997) chunk.blocks[index] = B.PUMPKIN;
+        } else if (biome === BIOME.SNOW) {
+          if (r < 0.01) chunk.blocks[index] = B.TALL_GRASS;
+        }
+      }
+    }
   }
 
   stampCactus(chunk, lx, baseY, lz, wx, wz) {

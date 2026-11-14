@@ -179,7 +179,7 @@ export class Sky {
 
   /**
    * @param {THREE.Camera} camera
-   * @param {number} timeOfDay 0..1 where 0 = sunrise, 0.25 = noon, 0.5 = dusk
+   * @param {number} timeOfDay 0..1 where 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset
    * @param {number} dt
    * @param {number} fogFar
    */

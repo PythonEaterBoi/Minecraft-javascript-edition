@@ -37,6 +37,10 @@ export class Input {
 
   _bind() {
     window.addEventListener('keydown', (event) => {
+      const target = event.target;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
       if (event.repeat) {
         if (MOVEMENT_KEYS.has(event.code) && this.enabled) event.preventDefault();
         return;

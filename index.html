@@ -19,6 +19,8 @@
     <canvas id="game-canvas" aria-label="Voxel world viewport"></canvas>
 
     <div id="vignette" aria-hidden="true"></div>
+    <div id="damage-flash" aria-hidden="true"></div>
+    <div id="vibrance" aria-hidden="true"></div>
     <div id="underwater-overlay" aria-hidden="true"></div>
 
     <!-- ===================== In-game HUD ===================== -->
@@ -33,7 +35,15 @@
 
       <div id="held-block" class="held-block" aria-hidden="true"><canvas id="held-canvas" width="128" height="128"></canvas></div>
 
-      <div id="hotbar" class="hotbar" role="toolbar" aria-label="Block hotbar"></div>
+      <div id="mining-bar" class="mining-bar hidden"><div id="mining-fill" class="mining-fill"></div></div>
+
+      <div id="stats" class="stats" aria-label="Health, hunger and air">
+        <div id="health-row" class="stat-row"></div>
+        <div id="hunger-row" class="stat-row"></div>
+        <div id="air-row" class="stat-row"></div>
+      </div>
+
+      <div id="hotbar" class="hotbar" role="toolbar" aria-label="Item hotbar"></div>
 
       <div id="mp-hud" class="mp-hud hidden" aria-live="polite"></div>
     </div>
@@ -72,6 +82,7 @@
           </button>
           <button id="btn-new-world" class="mc-button" type="button">New World</button>
           <button id="btn-title-multiplayer" class="mc-button" type="button">Multiplayer</button>
+          <button id="btn-title-servers" class="mc-button" type="button">Servers</button>
           <button id="btn-title-settings" class="mc-button" type="button">Settings</button>
           <button id="btn-title-controls" class="mc-button" type="button">Controls</button>
         </div>
@@ -80,7 +91,7 @@
           A fan-made voxel sandbox · Not affiliated with Mojang or Microsoft
         </p>
       </div>
-      <div class="version-tag">v1.1.0 · three.js · <span id="seed-tag">seed 38</span></div>
+      <div class="version-tag">v1.2.0 · three.js · <span id="seed-tag">seed 38</span></div>
     </div>
 
     <!-- ===================== Pause screen ===================== -->
@@ -93,6 +104,7 @@
           <button id="btn-pause-settings" class="mc-button" type="button">Settings</button>
           <button id="btn-pause-controls" class="mc-button" type="button">Controls</button>
           <button id="btn-pause-multiplayer" class="mc-button" type="button">Multiplayer</button>
+          <button id="btn-pause-servers" class="mc-button" type="button">Servers</button>
           <button id="btn-save" class="mc-button" type="button">Save World</button>
           <button id="btn-quit" class="mc-button danger" type="button">Save &amp; Quit to Title</button>
         </div>
@@ -111,17 +123,71 @@
       </div>
     </div>
 
-    <!-- ===================== Inventory ===================== -->
+    <!-- ===================== Inventory / containers ===================== -->
     <div id="inventory-screen" class="screen hidden">
       <div class="inventory-panel">
         <div class="inventory-header">
-          <h2>Blocks</h2>
+          <h2 id="inventory-title">Inventory</h2>
+          <div class="inventory-tabs">
+            <button id="tab-recipes" class="mc-button tiny" type="button">Crafting</button>
+            <button id="tab-blocks" class="mc-button tiny" type="button">Blocks</button>
+            <button id="tab-craft" class="mc-button tiny hidden" type="button">Craft</button>
+          </div>
           <button id="inventory-close" class="mc-button small" type="button">Close</button>
         </div>
-        <p class="inventory-hint">
-          Click a block to put it in hotbar slot <b id="inventory-slot">1</b>. Press <kbd>E</kbd> to close.
+
+        <div id="inventory-container" class="inventory-container hidden">
+          <div class="inventory-sub" id="container-label">Chest</div>
+          <div id="container-grid" class="slot-grid"></div>
+          <div id="furnace-info" class="furnace-info hidden">
+            <div class="furnace-flame"><div id="furnace-burn"></div></div>
+            <div class="furnace-arrow"><div id="furnace-progress"></div></div>
+          </div>
+        </div>
+
+        <div class="inventory-columns">
+          <div class="inventory-side">
+            <div class="inventory-sub">Inventory <span id="inventory-mode" class="inventory-mode"></span></div>
+            <div id="inventory-main-grid" class="slot-grid"></div>
+            <div class="inventory-sub">Hotbar</div>
+            <div id="inventory-hotbar-grid" class="slot-grid hotbar-grid"></div>
+            <div id="inventory-stats" class="inventory-stats"></div>
+          </div>
+          <div class="inventory-list-pane">
+            <div class="inventory-list-head">
+              <span id="list-title">Crafting</span>
+              <input id="list-search" class="inventory-search" type="search" placeholder="Search…" aria-label="Search" />
+            </div>
+            <div id="inventory-list" class="inventory-list"></div>
+          </div>
+        </div>
+        <p class="inventory-hint" id="inventory-hint">
+          Click an item to pick it up, click a slot to drop it. <kbd>Shift</kbd>+click moves a stack.
+          <kbd>E</kbd> closes.
         </p>
-        <div id="inventory-grid" class="inventory-grid"></div>
+      </div>
+      <div id="inventory-cursor" class="inventory-cursor hidden" aria-hidden="true"></div>
+    </div>
+
+    <!-- ===================== Death ===================== -->
+    <div id="death-screen" class="screen hidden">
+      <div class="death-inner">
+        <h2 class="death-title">You died</h2>
+        <p id="death-cause" class="death-cause">Try again?</p>
+        <div class="menu-buttons">
+          <button id="btn-respawn" class="mc-button primary" type="button">Respawn</button>
+          <button id="btn-death-title" class="mc-button danger" type="button">Quit to Title</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== Chat ===================== -->
+    <div id="chat" class="chat">
+      <div id="chat-log" class="chat-log" aria-live="polite"></div>
+      <div id="chat-input-row" class="chat-input-row hidden">
+        <span id="chat-prefix" class="chat-prefix">/</span>
+        <input id="chat-input" class="chat-input" type="text" maxlength="200" autocomplete="off"
+               spellcheck="false" aria-label="Chat message or command" />
       </div>
     </div>
 

@@ -7,7 +7,7 @@ import { mulberry32 } from '../core/random.js';
 import { TILE, faceTile } from './blocks.js';
 
 export const ATLAS_TILE = 32; // on-screen pixels per tile
-export const ATLAS_GRID = 8; // tiles per row/column
+export const ATLAS_GRID = 16; // tiles per row/column
 const LOGICAL = 16; // painter resolution (16x16 "Minecraft pixels")
 const PX = ATLAS_TILE / LOGICAL;
 
@@ -442,6 +442,506 @@ PAINTERS[TILE.ICE] = (b) => {
   b.rect(9, 7, 5, 1, 'rgba(230,247,255,0.55)');
   b.rect(4, 11, 3, 1, 'rgba(230,247,255,0.5)');
   b.rect(10, 3, 1, 3, 'rgba(230,247,255,0.35)');
+};
+
+/* ------------------------------------------------------------------ */
+/* Expanded palette: stone variants, ores, metals, functional blocks,   */
+/* wool, plants and decorations.                                        */
+/* ------------------------------------------------------------------ */
+
+const solidTile = (b, base, specks, extras) => {
+  b.fill(base);
+  b.speckle(specks, 0.55);
+  if (extras) extras(b);
+  b.blobs(4, specks, 1, 2);
+};
+
+const oreTile = (b, gems, shade) => {
+  b.fill('#7f7f7f');
+  b.speckle(['#858585', '#787878', '#7b7b7b', '#838383'], 0.5);
+  b.blobs(5, ['#727272', '#8b8b8b'], 1, 2);
+  for (let i = 0; i < 4; i++) {
+    const x = 2 + Math.floor(b.rand() * 10);
+    const y = 2 + Math.floor(b.rand() * 10);
+    const w = 2 + Math.floor(b.rand() * 2);
+    const h = 2 + Math.floor(b.rand() * 2);
+    b.rect(x, y, w, h, gems[0]);
+    b.dot(x, y, gems[1]);
+    if (shade) b.dot(x + w - 1, y + h - 1, shade);
+  }
+};
+
+const planksTile = (b, tint) => {
+  b.fill(tint.base);
+  for (let y = 0; y < LOGICAL; y += 4) {
+    b.hLine(y, tint.line);
+    b.hLine(y + 3, tint.dark);
+    for (let i = 0; i < 3; i++) {
+      b.rect(Math.floor(b.rand() * 12), y + 1, 2 + Math.floor(b.rand() * 3), 1, tint.grain);
+    }
+    const seam = Math.floor(b.rand() * 14) + 1;
+    b.vLine(seam, tint.dark, y + 1, y + 3);
+  }
+};
+
+const metalTile = (b, base, light, dark) => {
+  b.fill(base);
+  b.speckle([base, light, dark], 0.25);
+  b.rect(1, 1, 14, 1, light);
+  b.rect(1, 1, 1, 14, light);
+  b.rect(14, 1, 1, 14, dark);
+  b.rect(1, 14, 14, 1, dark);
+  b.rect(3, 3, 4, 1, light);
+  b.rect(9, 10, 4, 1, dark);
+};
+
+const woolTile = (b, base, light, dark) => {
+  b.fill(base);
+  for (let i = 0; i < 90; i++) {
+    const x = Math.floor(b.rand() * LOGICAL);
+    const y = Math.floor(b.rand() * LOGICAL);
+    b.dot(x, y, b.rand() < 0.5 ? light : dark);
+  }
+  b.hLine(3, light);
+  b.hLine(11, dark);
+};
+
+// 33 COPPER_ORE
+PAINTERS[TILE.COPPER_ORE] = (b) => oreTile(b, ['#d07a45', '#f0a06a'], '#8f4f2a');
+// 34 REDSTONE_ORE
+PAINTERS[TILE.REDSTONE_ORE] = (b) => oreTile(b, ['#c9271f', '#ff5a4a'], '#7a1512');
+// 35 LAPIS_ORE
+PAINTERS[TILE.LAPIS_ORE] = (b) => oreTile(b, ['#2f5bc4', '#6f92f0'], '#1d3a86');
+// 36 EMERALD_ORE
+PAINTERS[TILE.EMERALD_ORE] = (b) => oreTile(b, ['#3fbf5f', '#8ff0a8'], '#258a3f');
+// 37 DEEPSLATE
+PAINTERS[TILE.DEEPSLATE] = (b) => {
+  b.fill('#4c4c52');
+  b.speckle(['#52525a', '#454549', '#4a4a50', '#565660'], 0.6);
+  for (let i = 0; i < 6; i++) b.rect(Math.floor(b.rand() * 13), Math.floor(b.rand() * 15), 3, 1, '#3c3c42');
+  b.blobs(4, ['#3a3a40', '#5c5c64'], 1, 2);
+};
+// 38 COBBLE_DEEPSLATE
+PAINTERS[TILE.COBBLE_DEEPSLATE] = (b) => {
+  b.fill('#3a3a40');
+  const shades = ['#4a4a52', '#54545c', '#42424a', '#5c5c66'];
+  for (let i = 0; i < 9; i++) {
+    const x = Math.floor(b.rand() * 12);
+    const y = Math.floor(b.rand() * 12);
+    b.rect(x, y, 3 + Math.floor(b.rand() * 3), 3, shades[i % shades.length]);
+    b.dot(x, y, '#66666f');
+  }
+};
+// 39 DEEPSLATE_BRICKS
+PAINTERS[TILE.DEEPSLATE_BRICKS] = (b) => {
+  b.fill('#43434a');
+  for (let y = 0; y < LOGICAL; y += 4) {
+    b.hLine(y, '#33333a');
+    const offset = (y / 4) % 2 === 0 ? 0 : 4;
+    for (let x = offset; x < LOGICAL; x += 8) b.vLine(x, '#33333a', y, y + 4);
+    for (let x = 0; x < LOGICAL; x += 2) b.dot(x, y + 1, '#4d4d55');
+  }
+};
+// 40 GRANITE
+PAINTERS[TILE.GRANITE] = (b) => solidTile(b, '#9a6a5c', ['#a1746a', '#8d5f52', '#a87a6c'], (bb) => {
+  bb.blobs(5, ['#b98f80', '#7d5246'], 1, 2);
+});
+// 41 DIORITE
+PAINTERS[TILE.DIORITE] = (b) => solidTile(b, '#c5c5c5', ['#cfcfcf', '#b8b8b8', '#c9c9c9'], (bb) => {
+  for (let i = 0; i < 8; i++) bb.dot(Math.floor(bb.rand() * 16), Math.floor(bb.rand() * 16), '#8f8f8f');
+});
+// 42 ANDESITE
+PAINTERS[TILE.ANDESITE] = (b) => solidTile(b, '#8f9296', ['#979a9e', '#84878b', '#9a9da1'], (bb) => {
+  for (let i = 0; i < 4; i++) bb.hLine(Math.floor(bb.rand() * 15), '#77797d');
+});
+// 43 POLISHED_GRANITE
+PAINTERS[TILE.POLISHED_GRANITE] = (b) => {
+  b.fill('#9a6a5c');
+  b.speckle(['#a1746a', '#94695b'], 0.3);
+  b.rect(0, 0, 16, 1, '#b08272');
+  b.rect(0, 15, 16, 1, '#7d5246');
+  b.rect(0, 0, 1, 16, '#b08272');
+};
+// 44 POLISHED_DIORITE
+PAINTERS[TILE.POLISHED_DIORITE] = (b) => {
+  b.fill('#c5c5c5');
+  b.speckle(['#cdcdcd', '#bdbdbd'], 0.3);
+  b.rect(0, 0, 16, 1, '#dedede');
+  b.rect(0, 15, 16, 1, '#a8a8a8');
+};
+// 45 POLISHED_ANDESITE
+PAINTERS[TILE.POLISHED_ANDESITE] = (b) => {
+  b.fill('#8f9296');
+  b.speckle(['#96999d', '#888b8f'], 0.3);
+  b.rect(0, 0, 16, 1, '#a3a6aa');
+  b.rect(0, 15, 16, 1, '#74777b');
+};
+// 46 TERRACOTTA
+PAINTERS[TILE.TERRACOTTA] = (b) => {
+  b.fill('#a8543a');
+  b.speckle(['#b05c40', '#9c4b33', '#a8543a'], 0.5);
+  b.hLine(5, '#8f422c');
+  b.hLine(11, '#bb6749');
+  b.blobs(4, ['#8f422c', '#bb6749'], 1, 2);
+};
+// 47 MOSSY_COBBLE
+PAINTERS[TILE.MOSSY_COBBLE] = (b) => {
+  PAINTERS[TILE.COBBLE](b);
+  for (let i = 0; i < 26; i++) {
+    const x = Math.floor(b.rand() * LOGICAL);
+    const y = Math.floor(b.rand() * LOGICAL);
+    b.dot(x, y, b.rand() < 0.5 ? '#4f7a35' : '#6a9c47');
+  }
+};
+// 48 CLAY
+PAINTERS[TILE.CLAY] = (b) => {
+  b.fill('#a4a9c0');
+  b.speckle(['#adb2c8', '#9ba0b6', '#b4b9ce'], 0.45);
+  b.blobs(3, ['#969bb2', '#b8bed3'], 1, 2);
+};
+// 49 BIRCH_PLANKS
+PAINTERS[TILE.BIRCH_PLANKS] = (b) => planksTile(b, { base: '#d7c99a', line: '#c9b985', dark: '#b3a271', grain: '#e2d6ad' });
+// 50 SPRUCE_PLANKS
+PAINTERS[TILE.SPRUCE_PLANKS] = (b) => planksTile(b, { base: '#6b4f31', line: '#5c432a', dark: '#4a3521', grain: '#7d5e3c' });
+// 51 BOOKSHELF
+PAINTERS[TILE.BOOKSHELF] = (b) => {
+  planksTile(b, { base: '#a8814f', line: '#96703f', dark: '#7d5c33', grain: '#b8915c' });
+  b.rect(1, 2, 14, 5, '#5a3a20');
+  b.rect(1, 9, 14, 5, '#5a3a20');
+  const books = ['#b8433a', '#3a6fb8', '#3aa85c', '#c9a227', '#8a5cd0', '#c96a2f'];
+  for (const y of [2, 9]) {
+    let x = 2;
+    while (x < 14) {
+      const w = 1 + Math.floor(b.rand() * 2);
+      b.rect(x, y, w, 4, books[Math.floor(b.rand() * books.length)]);
+      x += w + 1;
+    }
+  }
+};
+// 52 CRAFTING_TOP
+PAINTERS[TILE.CRAFTING_TOP] = (b) => {
+  planksTile(b, { base: '#a8814f', line: '#96703f', dark: '#7d5c33', grain: '#b8915c' });
+  b.rect(0, 0, 16, 1, '#6b4a2a');
+  b.rect(0, 0, 1, 16, '#6b4a2a');
+  b.rect(7, 2, 1, 12, '#6b4a2a');
+  b.rect(2, 7, 12, 1, '#6b4a2a');
+  b.rect(9, 9, 3, 3, '#8f6a3f');
+};
+// 53 CRAFTING_SIDE
+PAINTERS[TILE.CRAFTING_SIDE] = (b) => {
+  planksTile(b, { base: '#9c7748', line: '#8a6739', dark: '#74552e', grain: '#ab8552' });
+  b.rect(2, 2, 4, 4, '#6b6b6b');
+  b.rect(9, 2, 1, 4, '#6b4a2a');
+  b.rect(10, 3, 3, 1, '#6b4a2a');
+  b.rect(3, 10, 5, 1, '#b9b9b9');
+};
+// 54 FURNACE_SIDE
+PAINTERS[TILE.FURNACE_SIDE] = (b) => {
+  b.fill('#8a8a8a');
+  b.speckle(['#929292', '#7f7f7f'], 0.35);
+  for (let i = 0; i < 4; i++) b.rect(Math.floor(b.rand() * 12), Math.floor(b.rand() * 14), 3, 1, '#747474');
+  b.rect(0, 0, 16, 1, '#9e9e9e');
+  b.rect(0, 15, 16, 1, '#6b6b6b');
+};
+// 55 FURNACE_FRONT
+PAINTERS[TILE.FURNACE_FRONT] = (b) => {
+  PAINTERS[TILE.FURNACE_SIDE](b);
+  b.rect(3, 6, 10, 7, '#2b2b2b');
+  b.rect(4, 11, 8, 2, '#f28b20');
+  b.rect(5, 9, 2, 2, '#e5561f');
+  b.rect(9, 8, 2, 3, '#ffb648');
+  b.rect(3, 5, 10, 1, '#a8a8a8');
+};
+// 56 FURNACE_TOP
+PAINTERS[TILE.FURNACE_TOP] = (b) => {
+  PAINTERS[TILE.FURNACE_SIDE](b);
+  b.rect(5, 5, 6, 6, '#5a5a5a');
+  b.rect(6, 6, 4, 4, '#3d3d3d');
+};
+// 57 CHEST_TOP
+PAINTERS[TILE.CHEST_TOP] = (b) => {
+  planksTile(b, { base: '#b08447', line: '#9c7440', dark: '#7f5c31', grain: '#c0955a' });
+  b.rect(0, 0, 16, 1, '#6b4a2a');
+  b.rect(0, 15, 16, 1, '#6b4a2a');
+  b.rect(0, 0, 1, 16, '#6b4a2a');
+  b.rect(15, 0, 1, 16, '#6b4a2a');
+  b.rect(4, 7, 8, 2, '#6b4a2a');
+};
+// 58 CHEST_SIDE
+PAINTERS[TILE.CHEST_SIDE] = (b) => {
+  planksTile(b, { base: '#b08447', line: '#9c7440', dark: '#7f5c31', grain: '#c0955a' });
+  b.rect(0, 5, 16, 1, '#6b4a2a');
+  b.rect(0, 0, 16, 1, '#6b4a2a');
+  b.rect(0, 15, 16, 1, '#6b4a2a');
+};
+// 59 CHEST_FRONT
+PAINTERS[TILE.CHEST_FRONT] = (b) => {
+  PAINTERS[TILE.CHEST_SIDE](b);
+  b.rect(7, 5, 3, 3, '#c9a227');
+  b.rect(8, 6, 1, 2, '#7a6314');
+};
+// 60 COAL_BLOCK
+PAINTERS[TILE.COAL_BLOCK] = (b) => {
+  b.fill('#232323');
+  b.speckle(['#2b2b2b', '#1c1c1c', '#333333'], 0.7);
+  b.blobs(6, ['#3a3a3a', '#151515'], 1, 3);
+  for (let i = 0; i < 5; i++) b.dot(Math.floor(b.rand() * 16), Math.floor(b.rand() * 16), '#5a5a5a');
+};
+// 61 IRON_BLOCK
+PAINTERS[TILE.IRON_BLOCK] = (b) => metalTile(b, '#d8d8d8', '#f2f2f2', '#a8a8a8');
+// 62 GOLD_BLOCK
+PAINTERS[TILE.GOLD_BLOCK] = (b) => metalTile(b, '#f2cf4a', '#fff3a8', '#c9a227');
+// 63 DIAMOND_BLOCK
+PAINTERS[TILE.DIAMOND_BLOCK] = (b) => {
+  metalTile(b, '#57cfc8', '#a8fff8', '#2f9c96');
+  b.rect(6, 6, 4, 4, '#b9fff8');
+};
+// 64 EMERALD_BLOCK
+PAINTERS[TILE.EMERALD_BLOCK] = (b) => {
+  metalTile(b, '#3fbf5f', '#8ff0a8', '#258a3f');
+  b.rect(6, 6, 4, 4, '#a8ffc0');
+};
+// 65 LAPIS_BLOCK
+PAINTERS[TILE.LAPIS_BLOCK] = (b) => {
+  b.fill('#2f5bc4');
+  b.speckle(['#3a68d6', '#2849a8', '#6f92f0'], 0.6);
+  b.blobs(5, ['#8fa8ff', '#1d3a86'], 1, 2);
+};
+// 66 REDSTONE_BLOCK
+PAINTERS[TILE.REDSTONE_BLOCK] = (b) => {
+  b.fill('#a8231c');
+  b.speckle(['#c9271f', '#8f1a14', '#e6392f'], 0.6);
+  for (let i = 0; i < 6; i++) b.dot(Math.floor(b.rand() * 16), Math.floor(b.rand() * 16), '#ff7a4a');
+};
+// 67 COPPER_BLOCK
+PAINTERS[TILE.COPPER_BLOCK] = (b) => {
+  metalTile(b, '#d08b56', '#f0ab74', '#a5683a');
+  b.rect(2, 12, 3, 1, '#6fa87a');
+  b.rect(11, 3, 2, 1, '#6fa87a');
+};
+// 68-75 WOOL
+PAINTERS[TILE.WOOL_WHITE] = (b) => woolTile(b, '#eeeeee', '#fbfbfb', '#d8d8d8');
+PAINTERS[TILE.WOOL_RED] = (b) => woolTile(b, '#b8433a', '#d15b50', '#8f2f28');
+PAINTERS[TILE.WOOL_ORANGE] = (b) => woolTile(b, '#dd7a2f', '#f0954a', '#b45f22');
+PAINTERS[TILE.WOOL_YELLOW] = (b) => woolTile(b, '#d9c04a', '#f0d968', '#b09a2f');
+PAINTERS[TILE.WOOL_GREEN] = (b) => woolTile(b, '#5c9c40', '#74b554', '#427a2c');
+PAINTERS[TILE.WOOL_BLUE] = (b) => woolTile(b, '#3a6fb8', '#5188d1', '#2a5490');
+PAINTERS[TILE.WOOL_PURPLE] = (b) => woolTile(b, '#8a5cd0', '#a075e0', '#6a42a8');
+PAINTERS[TILE.WOOL_BLACK] = (b) => woolTile(b, '#2b2b2b', '#3a3a3a', '#1c1c1c');
+// 76 FLOWER_RED
+PAINTERS[TILE.FLOWER_RED] = (b) => {
+  b.vLine(8, '#4f7a35', 8, 16);
+  b.rect(6, 10, 2, 1, '#5f9941');
+  b.rect(9, 12, 2, 1, '#5f9941');
+  b.rect(6, 4, 4, 4, '#b8433a');
+  b.rect(7, 3, 2, 6, '#b8433a');
+  b.rect(7, 5, 2, 2, '#f2cf4a');
+};
+// 77 FLOWER_YELLOW
+PAINTERS[TILE.FLOWER_YELLOW] = (b) => {
+  b.vLine(8, '#4f7a35', 7, 16);
+  b.rect(5, 11, 3, 1, '#5f9941');
+  b.rect(9, 13, 2, 1, '#5f9941');
+  b.rect(5, 3, 6, 5, '#e8c93a');
+  b.rect(7, 2, 3, 7, '#e8c93a');
+  b.rect(7, 5, 3, 2, '#c9a227');
+};
+// 78 TALL_GRASS
+PAINTERS[TILE.TALL_GRASS] = (b) => {
+  for (let i = 0; i < 9; i++) {
+    const x = 1 + Math.floor(b.rand() * 14);
+    const h = 4 + Math.floor(b.rand() * 9);
+    const color = ['#5f9941', '#6da84a', '#4f7a35'][Math.floor(b.rand() * 3)];
+    b.vLine(x, color, 16 - h, 16);
+    if (b.rand() < 0.5) b.rect(x + 1, 16 - h + 1, 1, 2, color);
+  }
+};
+// 79 DEAD_BUSH
+PAINTERS[TILE.DEAD_BUSH] = (b) => {
+  b.vLine(8, '#6b4a2a', 8, 16);
+  b.rect(5, 10, 3, 1, '#6b4a2a');
+  b.rect(9, 9, 3, 1, '#6b4a2a');
+  b.rect(4, 6, 2, 1, '#7d5a35');
+  b.rect(10, 5, 2, 1, '#7d5a35');
+};
+// 80 SAPLING
+PAINTERS[TILE.SAPLING] = (b) => {
+  b.vLine(8, '#6b4a2a', 9, 16);
+  b.rect(5, 6, 6, 3, '#4f7a35');
+  b.rect(6, 4, 4, 3, '#5f9941');
+  b.rect(3, 8, 3, 2, '#4f7a35');
+  b.rect(10, 8, 3, 2, '#4f7a35');
+};
+// 81 PUMPKIN_SIDE
+PAINTERS[TILE.PUMPKIN_SIDE] = (b) => {
+  b.fill('#d97b1f');
+  for (let x = 0; x < LOGICAL; x += 3) b.vLine(x, '#c46a16', 0, 16);
+  b.hLine(0, '#a85a12');
+  b.hLine(15, '#a85a12');
+  b.blobs(3, ['#e88a2a', '#c46a16'], 1, 2);
+};
+// 82 PUMPKIN_TOP
+PAINTERS[TILE.PUMPKIN_TOP] = (b) => {
+  b.fill('#c46a16');
+  for (let i = 0; i < 5; i++) b.rect(2, 2 + i * 3, 12, 1, '#d97b1f');
+  b.rect(7, 7, 2, 3, '#6b4a2a');
+};
+// 83 HAY_SIDE
+PAINTERS[TILE.HAY_SIDE] = (b) => {
+  b.fill('#d3b13c');
+  for (let i = 0; i < 60; i++) {
+    const x = Math.floor(b.rand() * LOGICAL);
+    const y = Math.floor(b.rand() * LOGICAL);
+    b.rect(x, y, 1, 2 + Math.floor(b.rand() * 3), b.rand() < 0.5 ? '#e3c95c' : '#b99a2f');
+  }
+  b.hLine(4, '#8f6a1f');
+  b.hLine(12, '#8f6a1f');
+};
+// 84 HAY_TOP
+PAINTERS[TILE.HAY_TOP] = (b) => {
+  b.fill('#d3b13c');
+  for (let i = 0; i < 70; i++) {
+    const x = Math.floor(b.rand() * LOGICAL);
+    const y = Math.floor(b.rand() * LOGICAL);
+    b.dot(x, y, b.rand() < 0.5 ? '#e3c95c' : '#b99a2f');
+  }
+  b.rect(6, 6, 4, 4, '#b99a2f');
+};
+// 85 MOSSY_STONE_BRICKS
+PAINTERS[TILE.MOSSY_STONE_BRICKS] = (b) => {
+  PAINTERS[TILE.STONE_BRICKS](b);
+  for (let i = 0; i < 22; i++) {
+    const x = Math.floor(b.rand() * LOGICAL);
+    const y = Math.floor(b.rand() * LOGICAL);
+    b.dot(x, y, b.rand() < 0.5 ? '#4f7a35' : '#6a9c47');
+  }
+};
+// 86 CRACKED_STONE_BRICKS
+PAINTERS[TILE.CRACKED_STONE_BRICKS] = (b) => {
+  PAINTERS[TILE.STONE_BRICKS](b);
+  for (let i = 0; i < 5; i++) {
+    const x = Math.floor(b.rand() * 12);
+    const y = Math.floor(b.rand() * 12);
+    b.rect(x, y, 2, 1, '#5a5a5a');
+    b.rect(x + 1, y + 1, 1, 2, '#5a5a5a');
+  }
+};
+// 87 SMOOTH_STONE
+PAINTERS[TILE.SMOOTH_STONE] = (b) => {
+  b.fill('#9a9a9a');
+  b.speckle(['#a2a2a2', '#939393'], 0.25);
+  b.rect(0, 0, 16, 1, '#adadad');
+  b.rect(0, 15, 16, 1, '#7f7f7f');
+};
+// 88 QUARTZ
+PAINTERS[TILE.QUARTZ] = (b) => {
+  b.fill('#e6e2da');
+  b.speckle(['#efece6', '#dcd7cd'], 0.3);
+  b.rect(0, 0, 16, 1, '#f5f3ee');
+  b.rect(0, 15, 16, 1, '#cbc5b9');
+};
+// 89 PODZOL_TOP
+PAINTERS[TILE.PODZOL_TOP] = (b) => {
+  b.fill('#8a5a2a');
+  b.speckle(['#96642f', '#7d5025', '#a5703a'], 0.6);
+  b.blobs(5, ['#6a4420', '#b07a42'], 1, 3);
+};
+// 90 PODZOL_SIDE
+PAINTERS[TILE.PODZOL_SIDE] = (b) => {
+  b.fill('#8a6140');
+  b.speckle(['#835a3b', '#956a48'], 0.6);
+  for (let x = 0; x < LOGICAL; x++) {
+    const depth = 4 + Math.floor(b.rand() * 3);
+    for (let y = 0; y < depth; y++) b.dot(x, y, ['#8a5a2a', '#96642f', '#7d5025'][Math.floor(b.rand() * 3)]);
+  }
+};
+// 91 COARSE_DIRT
+PAINTERS[TILE.COARSE_DIRT] = (b) => {
+  b.fill('#7d5637');
+  b.speckle(['#8a6140', '#6a4629', '#916848'], 0.7);
+  b.blobs(8, ['#5f4026', '#9c7355'], 1, 2);
+};
+// 92 RED_SAND
+PAINTERS[TILE.RED_SAND] = (b) => {
+  b.fill('#c47a3a');
+  b.speckle(['#cd8442', '#b96f31', '#d18f52'], 0.5);
+  b.blobs(5, ['#b0652a', '#d99a5c'], 1, 2);
+};
+// 93 RED_SANDSTONE
+PAINTERS[TILE.RED_SANDSTONE] = (b) => {
+  b.fill('#c47a3a');
+  b.speckle(['#cb8142', '#bd7133'], 0.3);
+  b.hLine(3, '#a85f28');
+  b.hLine(9, '#d99a5c');
+  b.hLine(13, '#a85f28');
+};
+// 94 MUSHROOM_RED
+PAINTERS[TILE.MUSHROOM_RED] = (b) => {
+  b.rect(7, 10, 2, 5, '#efe6d0');
+  b.rect(4, 4, 8, 6, '#c9342f');
+  b.rect(5, 3, 6, 2, '#c9342f');
+  b.rect(6, 5, 2, 2, '#f2f2f2');
+  b.rect(9, 7, 2, 2, '#f2f2f2');
+};
+// 95 MUSHROOM_BROWN
+PAINTERS[TILE.MUSHROOM_BROWN] = (b) => {
+  b.rect(7, 9, 2, 6, '#efe6d0');
+  b.rect(4, 5, 8, 5, '#a8875c');
+  b.rect(5, 4, 6, 2, '#b8966a');
+  b.rect(6, 6, 2, 1, '#8f6f47');
+};
+// 96 AMETHYST
+PAINTERS[TILE.AMETHYST] = (b) => {
+  b.fill('#8a5cd0');
+  b.speckle(['#9668d8', '#7a4ec0', '#a87ce8'], 0.5);
+  for (let i = 0; i < 4; i++) {
+    const x = 2 + Math.floor(b.rand() * 10);
+    const y = 2 + Math.floor(b.rand() * 10);
+    b.rect(x, y, 3, 2, '#c9a8f5');
+    b.dot(x, y, '#f0e6ff');
+  }
+};
+// 97 MELON_SIDE
+PAINTERS[TILE.MELON_SIDE] = (b) => {
+  b.fill('#5f9941');
+  for (let x = 1; x < LOGICAL; x += 3) b.vLine(x, '#4f7a35', 0, 16);
+  b.rect(0, 0, 16, 1, '#6da84a');
+  b.rect(0, 15, 16, 1, '#4a6f30');
+  b.hLine(8, '#7fbf4d');
+};
+// 98 MELON_TOP
+PAINTERS[TILE.MELON_TOP] = (b) => {
+  b.fill('#4f7a35');
+  b.rect(3, 3, 10, 10, '#5f9941');
+  b.rect(6, 6, 4, 4, '#4a6f30');
+  b.rect(7, 7, 2, 2, '#7fbf4d');
+};
+// 99 LANTERN
+PAINTERS[TILE.LANTERN] = (b) => {
+  b.rect(5, 3, 6, 3, '#6b6b6b');
+  b.rect(4, 6, 8, 7, '#8a8a8a');
+  b.rect(5, 7, 6, 5, '#ffcf5a');
+  b.rect(6, 8, 4, 3, '#fff0a0');
+  b.rect(5, 13, 6, 2, '#6b6b6b');
+  b.rect(7, 1, 2, 2, '#8a8a8a');
+};
+// 100 BONE_BLOCK
+PAINTERS[TILE.BONE_BLOCK] = (b) => {
+  b.fill('#e6dfc9');
+  b.speckle(['#efe9d6', '#d8d0b8'], 0.5);
+  b.hLine(4, '#c3bba2');
+  b.hLine(11, '#c3bba2');
+  b.rect(2, 6, 4, 2, '#f5f0e0');
+  b.rect(9, 8, 4, 2, '#c3bba2');
+};
+// 101 NETHERITE_BLOCK
+PAINTERS[TILE.NETHERITE_BLOCK] = (b) => metalTile(b, '#4a4038', '#6a5c50', '#2b241f');
+// 102 TORCH
+PAINTERS[TILE.TORCH] = (b) => {
+  b.rect(7, 7, 2, 9, '#8a6538');
+  b.rect(6, 4, 4, 4, '#ffcf5a');
+  b.rect(7, 3, 2, 2, '#fff0a0');
+  b.rect(6, 8, 4, 1, '#c96a2f');
 };
 
 /* ------------------------------------------------------------------ */

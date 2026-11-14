@@ -159,6 +159,7 @@ export class World {
     this.applyGroup(chunk, 'mesh', data.opaque, this.materials.opaque, 0);
     this.applyGroup(chunk, 'meshWater', data.water, this.materials.water, 2);
     this.applyGroup(chunk, 'meshGlass', data.glass, this.materials.glass, 1);
+    this.applyGroup(chunk, 'meshPlants', data.plants, this.materials.plants, 1);
     chunk.dirty = false;
     chunk.lastUsed = this.time;
   }
@@ -177,6 +178,8 @@ export class World {
     geometry.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
     geometry.setAttribute('uv', new THREE.BufferAttribute(data.uvs, 2));
     geometry.setAttribute('color', new THREE.BufferAttribute(data.colors, 3, true));
+    if (data.normals) geometry.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3));
+    if (data.tangents) geometry.setAttribute('tangent', new THREE.BufferAttribute(data.tangents, 4));
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geometry.computeBoundingSphere();
 
@@ -262,6 +265,8 @@ export class World {
     if (chunk.meshWater) chunk.meshWater.geometry.dispose();
     this.scene.remove(chunk.meshGlass);
     if (chunk.meshGlass) chunk.meshGlass.geometry.dispose();
+    this.scene.remove(chunk.meshPlants);
+    if (chunk.meshPlants) chunk.meshPlants.geometry.dispose();
     this.chunks.delete(key);
     if (this._lastChunk === chunk) this._lastChunk = null;
   }

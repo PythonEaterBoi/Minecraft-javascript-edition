@@ -24,7 +24,7 @@ const SKY_FALLOFF = 0.058;
 
 // Precompute UVs for every atlas slot.
 const UV = [];
-for (let i = 0; i < 64; i++) UV.push(tileUV(i));
+for (let i = 0; i < 256; i++) UV.push(tileUV(i));
 
 const PAD = CHUNK_SIZE + 2; // 18
 const PAD_AREA = PAD * PAD;
@@ -40,11 +40,24 @@ function faceVisible(selfId, neighborId) {
   return true;
 }
 
+/** Unit normal of a quad, from its two edge vectors. */
+function quadNormal(corners) {
+  const e1 = [corners[1][0] - corners[0][0], corners[1][1] - corners[0][1], corners[1][2] - corners[0][2]];
+  const e2 = [corners[3][0] - corners[0][0], corners[3][1] - corners[0][1], corners[3][2] - corners[0][2]];
+  let nx = e1[1] * e2[2] - e1[2] * e2[1];
+  let ny = e1[2] * e2[0] - e1[0] * e2[2];
+  let nz = e1[0] * e2[1] - e1[1] * e2[0];
+  const len = Math.hypot(nx, ny, nz) || 1;
+  return [nx / len, ny / len, nz / len];
+}
+
 class BufferBuilder {
   constructor() {
     this.positions = [];
     this.uvs = [];
     this.colors = [];
+    this.normals = [];
+    this.tangents = [];
     this.indices = [];
     this.vertexCount = 0;
   }
@@ -63,9 +76,63 @@ class BufferBuilder {
       const v = Math.max(0, Math.min(255, Math.round(colors[i] * 255)));
       this.colors.push(v, v, v);
     }
+    const nrm = quadNormal(corners);
+    for (let i = 0; i < 4; i++) this.normals.push(nrm[0], nrm[1], nrm[2]);
+    // Tangent frame for normal mapping (U direction of the quad).
+    let tx = corners[1][0] - corners[0][0];
+    let ty = corners[1][1] - corners[0][1];
+    let tz = corners[1][2] - corners[0][2];
+    const tl = Math.hypot(tx, ty, tz) || 1;
+    tx /= tl;
+    ty /= tl;
+    tz /= tl;
+    for (let i = 0; i < 4; i++) this.tangents.push(tx, ty, tz, 1);
     const base = this.vertexCount;
     this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
     this.vertexCount += 4;
+  }
+
+  /** Two crossed quads (plants, torches). */
+  cross(px, py, pz, tile, brightness, width = 0.86, height = 1, yOffset = 0) {
+    const uv = UV[tile];
+    const half = width / 2;
+    const cx = px + 0.5;
+    const cz = pz + 0.5;
+    const y0 = py + yOffset;
+    const y1 = py + yOffset + height;
+    const quads = [
+      [[cx - half, y0, cz - half], [cx + half, y0, cz + half], [cx + half, y1, cz + half], [cx - half, y1, cz - half]],
+      [[cx - half, y0, cz + half], [cx + half, y0, cz - half], [cx + half, y1, cz - half], [cx - half, y1, cz + half]],
+    ];
+    for (const corners of quads) {
+      for (let i = 0; i < 4; i++) {
+        const c = corners[i];
+        this.positions.push(c[0], c[1], c[2]);
+        const u = i === 0 || i === 3 ? uv.u0 : uv.u1;
+        const v = i < 2 ? uv.vBottom : uv.vTop;
+        this.uvs.push(u, v);
+        const value = Math.max(0, Math.min(255, Math.round(brightness * 255)));
+        this.colors.push(value, value, value);
+      }
+      const nrm = quadNormal(corners);
+      for (let i = 0; i < 4; i++) this.normals.push(nrm[0], nrm[1], nrm[2]);
+      let tx = corners[1][0] - corners[0][0];
+      let ty = corners[1][1] - corners[0][1];
+      let tz = corners[1][2] - corners[0][2];
+      const tl = Math.hypot(tx, ty, tz) || 1;
+      tx /= tl;
+      ty /= tl;
+      tz /= tl;
+      for (let i = 0; i < 4; i++) {
+        this.tangents.push(tx, ty, tz, 1);
+      }
+      // Both windings so the quad is visible from either side even with
+      // front-face culling.
+      const base = this.vertexCount;
+      this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      this.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+      this.vertexCount += 4;
+    }
   }
 
   build() {
@@ -74,6 +141,8 @@ class BufferBuilder {
       positions: new Float32Array(this.positions),
       uvs: new Float32Array(this.uvs),
       colors: new Uint8Array(this.colors),
+      normals: new Float32Array(this.normals),
+      tangents: new Float32Array(this.tangents),
       indices: new Uint32Array(this.indices),
       vertexCount: this.vertexCount,
     };
@@ -115,6 +184,7 @@ export function buildChunkMesh(chunk, getChunk) {
   const opaque = new BufferBuilder();
   const water = new BufferBuilder();
   const glass = new BufferBuilder();
+  const plants = new BufferBuilder();
 
   const blockAt = (px, y, pz) => {
     if (y < 0) return B.BEDROCK;
@@ -137,6 +207,21 @@ export function buildChunkMesh(chunk, getChunk) {
         if (id === B.AIR) continue;
         const def = BLOCKS[id];
         if (!def) continue;
+
+        if (def.cross) {
+          const isTorch = id === B.TORCH;
+          const noise = hash3i(chunk.cx * CHUNK_SIZE + px, y, chunk.cz * CHUNK_SIZE + pz, 777) / 4294967296;
+          // Plants are thin, unshaded quads, so they read over-bright next to
+          // terrain that carries baked face shading — keep them a touch darker.
+          const shade = isTorch ? 1 : 0.74 + noise * 0.2;
+          plants.cross(
+            px, y, pz, faceTile(id, 4), shade,
+            isTorch ? 0.42 : 0.9,
+            isTorch ? 0.65 : 1,
+            isTorch ? 0.15 : 0,
+          );
+          continue;
+        }
 
         let builder;
         if (def.liquid) builder = water;
@@ -204,5 +289,6 @@ export function buildChunkMesh(chunk, getChunk) {
     opaque: opaque.build(),
     water: water.build(),
     glass: glass.build(),
+    plants: plants.build(),
   };
 }

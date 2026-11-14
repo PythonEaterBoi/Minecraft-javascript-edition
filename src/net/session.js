@@ -10,6 +10,7 @@
 // callbacks the game wires into world loading and remote avatars.
 
 const CHANNEL_PREFIX = 'mje-mp-';
+const DISCOVERY_CHANNEL = 'mje-mp-discovery';
 const PEER_TIMEOUT = 9000;
 const ICE_TIMEOUT = 4000;
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -111,6 +112,7 @@ export class MultiplayerSession {
     this.since = Date.now();
     this.channel = new BroadcastChannel(CHANNEL_PREFIX + this.room);
     this.channel.onmessage = (event) => this._receive(event.data);
+    this._openDiscovery();
     this._post({ t: 'join' });
     this._status('waiting', `In room “${this.room}” — open this page in another tab to play together.`);
     this.timers.push(setInterval(() => this._post({ t: 'hello' }), 2000));
@@ -168,6 +170,20 @@ export class MultiplayerSession {
     this._status('connecting', 'Connecting…');
   }
 
+  sendChat(text) {
+    const body = { t: 'chat', text: String(text || '').slice(0, 200) };
+    if (!this.connected) return;
+    if (this.mode === 'local') this._post(body);
+    else this._send(body);
+  }
+
+  sendBlockEntity(payload) {
+    if (!this.connected) return;
+    const body = { t: 'be', ...payload };
+    if (this.mode === 'local') this._post(body);
+    else this._send(body);
+  }
+
   sendState(state) {
     if (!this.connected) return;
     if (this.mode === 'local') this._post({ t: 'state', ...state });
@@ -199,6 +215,11 @@ export class MultiplayerSession {
       this.channel.onmessage = null;
       this.channel.close();
       this.channel = null;
+    }
+    if (this.discovery) {
+      this.discovery.onmessage = null;
+      this.discovery.close();
+      this.discovery = null;
     }
     if (this.dc) {
       this.dc.onclose = null;
@@ -291,6 +312,12 @@ export class MultiplayerSession {
       case 'time':
         this.handlers.onTime?.(Number(message.time), from);
         break;
+      case 'chat':
+        this.handlers.onChat?.(String(message.name || 'Player').slice(0, 16), String(message.text || '').slice(0, 200), from);
+        break;
+      case 'be':
+        this.handlers.onBlockEntity?.(message, from);
+        break;
       case 'bye':
         this._dropPeer(from, 'left');
         break;
@@ -349,6 +376,27 @@ export class MultiplayerSession {
       }
     };
     return pc;
+  }
+
+  _openDiscovery() {
+    if (this.discovery) return;
+    try {
+      this.discovery = new BroadcastChannel(DISCOVERY_CHANNEL);
+      this.discovery.onmessage = (event) => {
+        const message = event.data;
+        if (!message || message.t !== 'discover') return;
+        if (!this.room) return;
+        this.discovery.postMessage({
+          t: 'server-info',
+          room: this.room,
+          players: this.playerCount,
+          host: this.name,
+          mode: this.mode,
+        });
+      };
+    } catch {
+      this.discovery = null;
+    }
   }
 
   _wireChannel(dc) {
@@ -413,6 +461,11 @@ export class MultiplayerSession {
       this.channel.close();
       this.channel = null;
     }
+    if (this.discovery) {
+      this.discovery.onmessage = null;
+      this.discovery.close();
+      this.discovery = null;
+    }
     if (this.dc) {
       this.dc.onclose = null;
       this.dc.close();
@@ -425,4 +478,40 @@ export class MultiplayerSession {
     }
     this.peers.clear();
   }
+}
+
+
+/**
+ * Look for rooms open in other tabs of this browser. Sessions answer on a
+ * dedicated discovery channel while they are in a room.
+ */
+export function discoverServers(timeout = 900) {
+  return new Promise((resolve) => {
+    if (typeof BroadcastChannel !== 'function') {
+      resolve([]);
+      return;
+    }
+    const found = new Map();
+    let channel;
+    try {
+      channel = new BroadcastChannel(DISCOVERY_CHANNEL);
+    } catch {
+      resolve([]);
+      return;
+    }
+    channel.onmessage = (event) => {
+      const message = event.data;
+      if (!message || message.t !== 'server-info' || !message.room) return;
+      found.set(message.room, {
+        room: message.room,
+        players: Number(message.players) || 1,
+        host: String(message.host || 'Player').slice(0, 16),
+      });
+    };
+    channel.postMessage({ t: 'discover', from: Math.random().toString(36).slice(2) });
+    setTimeout(() => {
+      channel.close();
+      resolve([...found.values()]);
+    }, timeout);
+  });
 }

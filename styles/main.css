@@ -537,10 +537,22 @@ body.touch .held-block {
 }
 
 .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 6px;
   line-height: 1.55;
   font-size: 14px;
+  overscroll-behavior: contain;
+}
+
+.modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 4px;
 }
 
 .modal-actions {
@@ -1166,4 +1178,623 @@ textarea:focus-visible {
   outline: 3px solid #ffffff;
   outline-offset: 2px;
   box-shadow: 0 0 0 6px rgba(0, 0, 0, 0.55);
+}
+
+/* ==================================================================== */
+/* Survival HUD, chat, inventory screens and the new visual overlays    */
+/* ==================================================================== */
+
+.stats {
+  position: absolute;
+  left: 50%;
+  bottom: 86px;
+  transform: translateX(-50%);
+  width: min(430px, 78vw);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+  z-index: 4;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.stats.creative .stat-row {
+  display: none;
+}
+
+.stat-row {
+  display: flex;
+  gap: 1px;
+  height: 18px;
+}
+
+.stat-row.hidden {
+  display: none;
+}
+
+#hunger-row {
+  justify-content: flex-end;
+}
+
+.hud-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  background-image: var(--icon);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 1;
+}
+
+.hud-icon.half {
+  opacity: 1;
+  filter: brightness(0.72) saturate(0.9);
+}
+
+.hud-icon.empty {
+  opacity: 0.85;
+}
+
+.hud-icon.bubble {
+  width: 14px;
+  height: 14px;
+}
+
+.mining-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 116px;
+  width: 150px;
+  height: 7px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  overflow: hidden;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.mining-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #f2cf4a, #f28b20);
+  transition: width 60ms linear;
+}
+
+#damage-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(180, 20, 20, 0) 35%, rgba(160, 16, 16, 0.75) 100%);
+  z-index: 5;
+}
+
+#damage-flash.active {
+  animation: damage-pulse 450ms ease-out;
+}
+
+@keyframes damage-pulse {
+  0% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+#vibrance {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.55;
+  transition: opacity 0.4s ease;
+  background:
+    radial-gradient(60% 45% at 50% 8%, rgba(255, 236, 180, 0.16), rgba(255, 236, 180, 0) 70%),
+    radial-gradient(80% 60% at 50% 100%, rgba(30, 60, 110, 0.18), rgba(30, 60, 110, 0) 70%);
+  mix-blend-mode: soft-light;
+}
+
+body.no-vibrance #vibrance {
+  opacity: 0;
+}
+
+body.vibrant #game-canvas {
+  filter: saturate(1.24) contrast(1.06);
+}
+
+.hotbar-slot .slot-count {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+.hotbar-slot .slot-durability,
+.slot .slot-durability {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 4px;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.65);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.slot .slot-durability i,
+.hotbar-slot .slot-durability i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #7fd44a, #d9c04a);
+}
+
+.held-block.empty {
+  opacity: 0;
+}
+
+/* ---------------- Chat ---------------- */
+
+.chat {
+  position: absolute;
+  left: 18px;
+  bottom: 96px;
+  width: min(520px, 62vw);
+  z-index: 6;
+  pointer-events: none;
+  font-size: 14px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 34vh;
+  overflow-y: auto;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.chat.active .chat-log,
+.chat-log:not(:empty) {
+  opacity: 1;
+}
+
+.chat-line {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  padding: 2px 7px;
+  width: fit-content;
+  max-width: 100%;
+  word-break: break-word;
+  animation: chat-in 160ms ease-out;
+}
+
+.chat-line.system { color: #b8e986; }
+.chat-line.error { color: #ff9a8a; }
+.chat-line.command { color: #9ad4ff; }
+.chat-line.server { color: #ffd76a; }
+
+@keyframes chat-in {
+  from { transform: translateY(4px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.chat-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 5px;
+  padding: 4px 8px;
+  pointer-events: auto;
+}
+
+.chat-prefix {
+  color: #9ad4ff;
+  font-weight: 700;
+}
+
+.chat-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font: inherit;
+}
+
+/* ---------------- Inventory / containers ---------------- */
+
+.inventory-panel {
+  width: min(1020px, 94vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, rgba(22, 22, 26, 0.97), rgba(14, 14, 17, 0.98));
+  border: 2px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  color: #e8e8e8;
+}
+
+.inventory-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inventory-header h2 {
+  margin: 0;
+  font-size: 20px;
+  flex: 1;
+}
+
+.inventory-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.mc-button.tiny {
+  padding: 4px 10px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.inventory-tabs .mc-button.active {
+  background: linear-gradient(180deg, #6fae49, #4d8032);
+  color: #fff;
+}
+
+.inventory-columns {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  min-height: 0;
+  flex: 1;
+}
+
+.inventory-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.inventory-sub {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #9c9c9c;
+}
+
+.inventory-mode {
+  color: #7fd44a;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 46px));
+  gap: 4px;
+}
+
+.slot-grid.hotbar-grid {
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+}
+
+.slot {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.slot:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.slot:focus-visible {
+  outline: 2px solid #8fdcff;
+  outline-offset: 1px;
+}
+
+.slot canvas {
+  width: 38px;
+  height: 38px;
+  image-rendering: auto;
+}
+
+.slot .slot-count {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.inventory-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.furnace-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 26px;
+}
+
+.furnace-flame {
+  width: 14px;
+  height: 22px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+}
+
+.furnace-flame > div {
+  width: 100%;
+  height: 0%;
+  background: linear-gradient(180deg, #ffd76a, #f2701f);
+}
+
+.furnace-arrow {
+  width: 90px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.furnace-arrow > div {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #f2cf4a, #8fdcff);
+}
+
+.inventory-list-pane {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 54vh;
+}
+
+.inventory-list-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #9c9c9c;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.inventory-search {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  color: #eee;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.inventory-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 5px;
+  overflow-y: auto;
+  padding-right: 4px;
+  align-content: start;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.inventory-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.inventory-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e8e8e8;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+}
+
+.list-row:hover {
+  background: rgba(143, 220, 255, 0.14);
+}
+
+.list-row.disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.list-row canvas {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+}
+
+.list-name {
+  font-weight: 600;
+  display: block;
+}
+
+.recipe-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.recipe-ingredients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+  color: #b9b9b9;
+}
+
+.ingredient {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.ingredient.missing {
+  color: #ff9a8a;
+  background: rgba(255, 90, 70, 0.12);
+}
+
+.inventory-stats {
+  font-size: 12px;
+  color: #b9b9b9;
+}
+
+.inventory-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #8f8f8f;
+}
+
+.inventory-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+  z-index: 30;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.6));
+}
+
+.inventory-cursor canvas {
+  width: 48px;
+  height: 48px;
+}
+
+.inventory-cursor .slot-count {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px #000;
+}
+
+/* ---------------- Death ---------------- */
+
+.death-inner {
+  text-align: center;
+  padding: 30px 38px;
+  background: rgba(20, 6, 6, 0.86);
+  border: 2px solid rgba(255, 90, 70, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+
+.death-title {
+  margin: 0 0 6px;
+  font-size: 34px;
+  color: #ff6a5a;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+}
+
+.death-cause {
+  margin: 0 0 18px;
+  color: #d8c8c8;
+}
+
+body.dead #game-canvas {
+  filter: grayscale(0.65) brightness(0.7);
+}
+
+/* ---------------- Server browser ---------------- */
+
+.mp-server-row {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 8px;
+}
+
+.mp-server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mp-server {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mp-server.discovered {
+  border-color: rgba(127, 212, 74, 0.45);
+}
+
+.mp-server-name {
+  font-weight: 600;
+}
+
+.mp-server-room {
+  flex: 1;
+  font-size: 12px;
+  color: #9c9c9c;
+  text-align: right;
 }

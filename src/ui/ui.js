@@ -2,7 +2,10 @@
 // debug overlay, toasts and the mobile touch controls.
 
 import { getBlockIcon } from '../world/atlas.js';
-import { BLOCKS, PICKABLE_BLOCKS } from '../world/blocks.js';
+import { BLOCKS, PICKABLE_BLOCKS, B } from '../world/blocks.js';
+import { getItemIcon } from '../items/icons.js';
+import { itemDef, itemStackSize } from '../items/items.js';
+import { MAX_HEALTH, MAX_HUNGER, MAX_AIR } from '../player/survival.js';
 
 const SETTINGS_KEY = 'mje.settings.v1';
 
@@ -12,7 +15,23 @@ const DEFAULTS = {
   sound: true,
   clouds: true,
   dayCycle: true,
+  pbr: true,
+  vibrant: true,
+  mobs: true,
 };
+
+const HEART_SVG = (fill) =>
+  `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 14.2C2.2 10.2 0.4 7.4 0.4 4.7 0.4 2.2 2.2 0.4 4.6 0.4c1.4 0 2.7 0.7 3.4 1.8C8.7 1.1 10 0.4 11.4 0.4c2.4 0 4.2 1.8 4.2 4.3 0 2.7-1.8 5.5-7.6 9.5z" fill="${fill}" stroke="rgba(0,0,0,0.45)" stroke-width="1"/></svg>`,
+  )}`;
+const HUNGER_SVG = (fill) =>
+  `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M10.4 1.6c2 0 3.6 1.7 3.6 3.9 0 2.4-1.7 4.2-4 4.2-1.4 0-2.6-0.7-3.2-1.8L3.2 11.4l1.6 1.6-1.4 1.4-1.6-1.6-0.7 0.7-1.2-1.2 6.6-6.6c-0.4-0.6-0.6-1.3-0.6-2C5.9 3 7.5 1.6 9.3 1.6z" fill="${fill}" stroke="rgba(0,0,0,0.45)" stroke-width="1"/></svg>`,
+  )}`;
+const BUBBLE_SVG = (fill) =>
+  `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.4" fill="${fill}" stroke="rgba(0,0,0,0.45)" stroke-width="1"/><circle cx="5.6" cy="5.6" r="1.6" fill="rgba(255,255,255,0.75)"/></svg>`,
+  )}`;
 
 const SPLASHES = [
   'Now in JavaScript!',
@@ -31,18 +50,21 @@ const CONTROLS = [
   [['W', 'A', 'S', 'D'], 'Move around'],
   [['Arrows'], 'Look around (keyboard)'],
   [['Mouse'], 'Look around (when captured)'],
-  [['Left click'], 'Break block'],
-  [['Right click'], 'Place block'],
-  [['Middle click'], 'Pick block'],
-  [['V'], 'Break block (keyboard)'],
-  [['B'], 'Place block (keyboard)'],
+  [['Left click'], 'Mine / attack (hold)'],
+  [['Right click'], 'Place · eat · open chests and furnaces'],
+  [['Middle click'], 'Pick the targeted block'],
+  [['V'], 'Break block (keyboard) — tap or hold'],
+  [['B'], 'Place · use (keyboard)'],
+  [['E'], 'Inventory, crafting and containers'],
+  [['T'], 'Open chat'],
+  [['/'], 'Open the command line'],
+  [['Q'], 'Drop the held item'],
   [['Space'], 'Jump · swim up'],
   [['Shift'], 'Sprint · descend while flying'],
   [['F'], 'Toggle flight'],
   [['1', '–', '9'], 'Select hotbar slot'],
   [['Wheel'], 'Cycle hotbar'],
-  [['E'], 'Block picker'],
-  [['T'], 'Pause / resume time'],
+  [['F6'], 'Pause / resume time'],
   [['F3'], 'Debug information'],
   [['Esc'], 'Pause game'],
   [['↑', '↓'], 'Move between menu buttons'],
@@ -75,6 +97,13 @@ export class UI {
     this.lastLookTouch = { x: 0, y: 0 };
     this.labelTimer = 0;
     this.toastTimer = 0;
+    this.chatOpen = false;
+    this.chatMessages = [];
+    this.invView = null;
+    this.cursorStack = null;
+    this.invMode = 'recipes';
+    this.invSearch = '';
+    this.lastCursorEvent = { x: 0, y: 0 };
     this.playReady = false;
     this.mpKind = null;
     this.mpView = {
@@ -88,6 +117,11 @@ export class UI {
       invite: '',
       answerOut: '',
       connected: false,
+      serversTab: false,
+      servers: [],
+      discovered: [],
+      scanning: false,
+      activeRoom: '',
     };
 
     this.el = {
@@ -109,8 +143,39 @@ export class UI {
       modalBody: document.getElementById('modal-body'),
       modalClose: document.getElementById('modal-close'),
       inventory: document.getElementById('inventory-screen'),
-      inventoryGrid: document.getElementById('inventory-grid'),
-      inventorySlot: document.getElementById('inventory-slot'),
+      inventoryTitle: document.getElementById('inventory-title'),
+      inventoryMain: document.getElementById('inventory-main-grid'),
+      inventoryHotbar: document.getElementById('inventory-hotbar-grid'),
+      inventoryList: document.getElementById('inventory-list'),
+      inventoryListTitle: document.getElementById('list-title'),
+      inventorySearch: document.getElementById('list-search'),
+      inventoryContainer: document.getElementById('inventory-container'),
+      containerGrid: document.getElementById('container-grid'),
+      containerLabel: document.getElementById('container-label'),
+      furnaceInfo: document.getElementById('furnace-info'),
+      furnaceBurn: document.getElementById('furnace-burn'),
+      furnaceProgress: document.getElementById('furnace-progress'),
+      inventoryCursor: document.getElementById('inventory-cursor'),
+      inventoryMode: document.getElementById('inventory-mode'),
+      inventoryStats: document.getElementById('inventory-stats'),
+      tabRecipes: document.getElementById('tab-recipes'),
+      tabBlocks: document.getElementById('tab-blocks'),
+      tabCraft: document.getElementById('tab-craft'),
+      healthRow: document.getElementById('health-row'),
+      hungerRow: document.getElementById('hunger-row'),
+      airRow: document.getElementById('air-row'),
+      stats: document.getElementById('stats'),
+      miningBar: document.getElementById('mining-bar'),
+      miningFill: document.getElementById('mining-fill'),
+      damageFlash: document.getElementById('damage-flash'),
+      death: document.getElementById('death-screen'),
+      deathCause: document.getElementById('death-cause'),
+      chat: document.getElementById('chat'),
+      chatLog: document.getElementById('chat-log'),
+      chatRow: document.getElementById('chat-input-row'),
+      chatInput: document.getElementById('chat-input'),
+      chatPrefix: document.getElementById('chat-prefix'),
+      vibrance: document.getElementById('vibrance'),
       loading: document.getElementById('loading-screen'),
       loadingLabel: document.getElementById('loading-label'),
       loadingFill: document.getElementById('loading-fill'),
@@ -189,6 +254,13 @@ export class UI {
     click('btn-title-controls', () => this.openControls());
     click('btn-title-multiplayer', () => this.callbacks.onMpOpen?.());
     click('btn-pause-multiplayer', () => this.callbacks.onMpOpen?.());
+    click('btn-title-servers', () => this.callbacks.onServersOpen?.());
+    click('btn-pause-servers', () => this.callbacks.onServersOpen?.());
+    click('tab-recipes', () => this.setInventoryMode('recipes'));
+    click('tab-blocks', () => this.setInventoryMode('blocks'));
+    click('tab-craft', () => this.setInventoryMode('craft'));
+    click('btn-respawn', () => this.callbacks.onRespawn?.());
+    click('btn-death-title', () => this.callbacks.onQuit?.());
     click('btn-resume', () => this.callbacks.onResume?.());
     click('btn-pause-settings', () => this.openSettings());
     click('btn-pause-controls', () => this.openControls());
@@ -199,6 +271,38 @@ export class UI {
 
     this.el.modal.addEventListener('mousedown', (event) => {
       if (event.target === this.el.modal) this.closeModal();
+    });
+
+    // Inventory: track the mouse so the picked-up stack follows the cursor.
+    document.addEventListener('mousemove', (event) => {
+      this.lastCursorEvent = { x: event.clientX, y: event.clientY };
+      this.positionCursor();
+    });
+    this.el.inventory.addEventListener('contextmenu', (event) => event.preventDefault());
+
+    // Search boxes should not leak keystrokes into the game.
+    this.el.inventorySearch.addEventListener('input', () => {
+      this.invSearch = this.el.inventorySearch.value;
+      this.renderInventoryList();
+    });
+
+    // Chat / command input.
+    this.el.chatInput.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeChat();
+        return;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const text = this.el.chatInput.value;
+        const prefix = this.el.chatPrefix.textContent;
+        this.closeChat();
+        this.callbacks.onChatSubmit?.(prefix + text);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+      }
     });
   }
 
@@ -346,6 +450,9 @@ export class UI {
         { key: 'sound', title: 'Sound effects', desc: 'Procedural digging and placing sounds.', type: 'toggle' },
         { key: 'clouds', title: 'Clouds', desc: 'Drifting clouds above the world.', type: 'toggle' },
         { key: 'dayCycle', title: 'Day/night cycle', desc: 'Sunrises, sunsets and starry nights.', type: 'toggle' },
+        { key: 'pbr', title: 'PBR materials', desc: 'Normal, roughness and metalness maps with sunlight.', type: 'toggle' },
+        { key: 'vibrant', title: 'Vibrant visuals', desc: 'Saturated colour grading, sun glow and bloom.', type: 'toggle' },
+        { key: 'mobs', title: 'Mobs', desc: 'Animals and night-time zombies.', type: 'toggle' },
       ];
 
       for (const row of rows) {
@@ -585,6 +692,78 @@ export class UI {
         body.append(el('div', 'mp-players', `In this session: you, ${view.players.join(', ')}`));
       }
 
+      // ---- Servers ----
+      body.append(el('h3', 'mp-heading', 'Servers'));
+      body.append(
+        el(
+          'p',
+          'mp-hint',
+          'Rooms open in another tab of this browser show up here. Save the ones you use often.',
+        ),
+      );
+      const serverRow = el('div', 'mp-server-row');
+      const scanBtn = el('button', 'mc-button small', view.scanning ? 'Scanning…' : 'Scan for servers');
+      scanBtn.type = 'button';
+      scanBtn.disabled = !!view.scanning;
+      scanBtn.addEventListener('click', () => {
+        this.callbacks.onUiSound?.();
+        this.callbacks.onMpScan?.();
+      });
+      serverRow.append(scanBtn);
+      if (view.connected && view.activeRoom) {
+        const saveBtn = el('button', 'mc-button small', 'Save this room');
+        saveBtn.type = 'button';
+        saveBtn.addEventListener('click', () => {
+          this.callbacks.onUiSound?.();
+          this.callbacks.onMpSaveServer?.(view.activeRoom);
+        });
+        serverRow.append(saveBtn);
+      }
+      body.append(serverRow);
+
+      const serverList = el('div', 'mp-server-list');
+      for (const server of view.servers || []) {
+        const row = el('div', 'mp-server');
+        row.append(el('span', 'mp-server-name', server.name || server.room), el('span', 'mp-server-room', server.room));
+        const join = el('button', 'mc-button tiny primary', 'Join');
+        join.type = 'button';
+        join.addEventListener('click', () => {
+          this.callbacks.onUiSound?.();
+          view.room = server.room;
+          this.callbacks.onMpJoinRoom?.(server.room, view.name);
+        });
+        const remove = el('button', 'mc-button tiny danger', '✕');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', `Remove ${server.name || server.room}`);
+        remove.addEventListener('click', () => {
+          this.callbacks.onUiSound?.();
+          this.callbacks.onMpRemoveServer?.(server.room);
+        });
+        row.append(join, remove);
+        serverList.append(row);
+      }
+      for (const found of view.discovered || []) {
+        if ((view.servers || []).some((entry) => entry.room === found.room)) continue;
+        const row = el('div', 'mp-server discovered');
+        row.append(
+          el('span', 'mp-server-name', found.room),
+          el('span', 'mp-server-room', `${found.players} player${found.players === 1 ? '' : 's'} · ${found.host}`),
+        );
+        const join = el('button', 'mc-button tiny primary', 'Join');
+        join.type = 'button';
+        join.addEventListener('click', () => {
+          this.callbacks.onUiSound?.();
+          view.room = found.room;
+          this.callbacks.onMpJoinRoom?.(found.room, view.name);
+        });
+        row.append(join);
+        serverList.append(row);
+      }
+      if (!serverList.childElementCount) {
+        serverList.append(el('p', 'mp-hint', 'No saved servers yet. Join a room and press “Save this room”.'));
+      }
+      body.append(serverList);
+
       const nameRow = el('div', 'seed-input-row mp-row');
       const nameInput = document.createElement('input');
       nameInput.type = 'text';
@@ -732,30 +911,36 @@ export class UI {
   /* In-game HUD                                                         */
   /* ------------------------------------------------------------------ */
 
-  setHotbar(ids) {
-    this.hotbarIds = ids.slice();
+  setHotbar(stacks) {
+    this.hotbarStacks = Array.isArray(stacks) ? stacks.slice() : [];
     this.renderHotbar();
   }
 
   setSelectedSlot(index) {
     this.selectedSlot = index;
     this.renderHotbar();
-    const id = this.hotbarIds[index];
-    if (id !== undefined) {
-      this.showBlockLabel(BLOCKS[id]?.name || 'Block');
-      this.updateHeldBlock(id);
+    const stack = this.hotbarStacks ? this.hotbarStacks[index] : null;
+    if (stack) {
+      this.showBlockLabel(itemDef(stack.id)?.name || 'Item');
+      this.updateHeldBlock(stack);
+    } else {
+      this.updateHeldBlock(null);
     }
-    this.el.inventorySlot.textContent = String(index + 1);
   }
 
-  updateHeldBlock(id) {
-    if (!this.el.heldCanvas || !id) return;
-    const ctx = this.el.heldCanvas.getContext('2d');
+  updateHeldBlock(stack) {
+    const canvas = this.el.heldCanvas;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const icon = getBlockIcon(id, 128);
     ctx.clearRect(0, 0, 128, 128);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(icon, 0, 0, 128, 128);
+    this.el.heldBlock.classList.toggle('empty', !stack);
+    if (!stack) return;
+    const icon = getItemIcon(stack.id, 128);
+    if (icon) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(icon, 0, 0, 128, 128);
+    }
   }
 
   swingHand() {
@@ -769,19 +954,35 @@ export class UI {
 
   renderHotbar() {
     const bar = this.el.hotbar;
+    if (!bar) return;
     bar.innerHTML = '';
-    this.hotbarIds.forEach((id, i) => {
-      const slot = el('button', `hotbar-slot${i === this.selectedSlot ? ' selected' : ''}`);
+    const slots = this.hotbarStacks || [];
+    for (let i = 0; i < 9; i++) {
+      const stack = slots[i] || null;
+      const slot = document.createElement('button');
       slot.type = 'button';
-      slot.title = BLOCKS[id]?.name || 'Block';
+      slot.className = `hotbar-slot${i === this.selectedSlot ? ' selected' : ''}`;
       slot.dataset.index = String(i);
-      if (id) {
-        const icon = getBlockIcon(id, 64);
-        const canvas = document.createElement('canvas');
-        canvas.width = 64;
-        canvas.height = 64;
-        canvas.getContext('2d').drawImage(icon, 0, 0);
-        slot.append(canvas);
+      const def = stack ? itemDef(stack.id) : null;
+      slot.title = def ? def.name : 'Empty';
+      slot.setAttribute('aria-label', `Slot ${i + 1}${def ? `: ${def.name}` : ''}`);
+      if (stack) {
+        const icon = getItemIcon(stack.id, 64);
+        if (icon) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 64;
+          canvas.height = 64;
+          canvas.getContext('2d').drawImage(icon, 0, 0);
+          slot.append(canvas);
+        }
+        if (stack.count > 1) slot.append(el('span', 'slot-count', String(stack.count)));
+        if (def && def.durability) {
+          const bar = el('span', 'slot-durability');
+          const fill = el('i');
+          fill.style.width = `${Math.max(0, Math.min(1, (stack.dur ?? def.durability) / def.durability)) * 100}%`;
+          bar.append(fill);
+          slot.append(bar);
+        }
       }
       slot.append(el('span', 'index', String(i + 1)));
       slot.addEventListener('click', (event) => {
@@ -789,7 +990,7 @@ export class UI {
         this.callbacks.onSelectSlot?.(i);
       });
       bar.append(slot);
-    });
+    }
   }
 
   showBlockLabel(name) {
@@ -828,47 +1029,349 @@ export class UI {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Inventory                                                           */
+  /* Survival HUD                                                        */
   /* ------------------------------------------------------------------ */
 
-  renderInventory() {
-    const grid = this.el.inventoryGrid;
-    grid.innerHTML = '';
-    for (const block of PICKABLE_BLOCKS) {
-      const cell = el('button', 'block-cell');
-      cell.type = 'button';
-      cell.title = block.name;
-      const icon = getBlockIcon(block.id, 64);
-      const canvas = document.createElement('canvas');
-      canvas.width = 64;
-      canvas.height = 64;
-      canvas.getContext('2d').drawImage(icon, 0, 0);
-      cell.append(canvas, el('span', null, block.name));
-      cell.addEventListener('click', () => {
-        this.callbacks.onUiSound?.();
-        this.callbacks.onPickBlock?.(block.id);
-      });
-      grid.append(cell);
+  setSurvival({ health, hunger, air, creative }) {
+    this.survival = { health, hunger, air, creative };
+    const bar = (row, count, svg, value, max, cls) => {
+      if (!row) return;
+      row.innerHTML = '';
+      const icons = Math.ceil(count);
+      for (let i = 0; i < icons; i++) {
+        const unit = max / count;
+        const remain = value - i * unit;
+        const fill = remain >= unit * 0.95 ? 1 : remain <= 0 ? 0 : 0.5;
+        const icon = el('i', `hud-icon ${cls} ${fill === 1 ? 'full' : fill === 0 ? 'empty' : 'half'}`);
+        icon.style.setProperty('--icon', `url("${svg}")`);
+        row.append(icon);
+      }
+      row.classList.toggle('hidden', creative);
+    };
+    bar(this.el.healthRow, 10, HEART_SVG('__FILL__'), health, MAX_HEALTH, 'heart');
+    bar(this.el.hungerRow, 10, HUNGER_SVG('__FILL__'), hunger, MAX_HUNGER, 'hunger');
+    const airIcons = Math.ceil(MAX_AIR);
+    if (this.el.airRow) {
+      this.el.airRow.innerHTML = '';
+      if (!creative && air < MAX_AIR) {
+        for (let i = 0; i < airIcons; i++) {
+          const icon = el('i', `hud-icon bubble ${i < Math.ceil(air) ? 'full' : 'empty'}`);
+          icon.style.setProperty('--icon', `url("${BUBBLE_SVG('#6fd8ff')}")`);
+          this.el.airRow.append(icon);
+        }
+      }
     }
+    // Colour the icon fills (red hearts, golden hunger).
+    for (const node of this.el.healthRow?.children || []) {
+      node.style.setProperty('--icon', `url("${HEART_SVG('#e03a3a')}")`);
+      if (node.classList.contains('empty')) node.style.setProperty('--icon', `url("${HEART_SVG('rgba(40,10,10,0.55)')}")`);
+    }
+    for (const node of this.el.hungerRow?.children || []) {
+      node.style.setProperty('--icon', `url("${HUNGER_SVG('#d99a2b')}")`);
+      if (node.classList.contains('empty')) node.style.setProperty('--icon', `url("${HUNGER_SVG('rgba(40,25,10,0.55)')}")`);
+    }
+    this.el.stats?.classList.toggle('creative', !!creative);
   }
 
-  openInventory(ids, selected) {
-    this.hotbarIds = ids.slice();
-    this.selectedSlot = selected;
-    this.el.inventorySlot.textContent = String(selected + 1);
-    if (!this.el.inventoryGrid.childElementCount) this.renderInventory();
+  setMining(progress) {
+    if (!this.el.miningBar) return;
+    const active = progress > 0.001 && progress < 1;
+    this.el.miningBar.classList.toggle('hidden', !active);
+    if (active) this.el.miningFill.style.width = `${Math.min(100, progress * 100)}%`;
+  }
+
+  flashDamage() {
+    const node = this.el.damageFlash;
+    if (!node) return;
+    node.classList.remove('active');
+    void node.offsetWidth;
+    node.classList.add('active');
+  }
+
+  showDeath(cause) {
+    if (this.el.deathCause) this.el.deathCause.textContent = cause || 'You ran out of health.';
+    this.el.death?.classList.remove('hidden');
+    document.body.classList.add('dead');
+    setTimeout(() => document.getElementById('btn-respawn')?.focus({ preventScroll: true }), 0);
+  }
+
+  hideDeath() {
+    this.el.death?.classList.add('hidden');
+    document.body.classList.remove('dead');
+  }
+
+  closeDeath() {
+    this.hideDeath();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Chat and commands                                                   */
+  /* ------------------------------------------------------------------ */
+
+  addChatMessage(text, kind = 'chat') {
+    this.chatMessages.push({ text, kind, at: Date.now() });
+    if (this.chatMessages.length > 60) this.chatMessages.shift();
+    const line = el('div', `chat-line ${kind}`, text);
+    this.el.chatLog.append(line);
+    while (this.el.chatLog.childElementCount > 12) this.el.chatLog.firstElementChild.remove();
+    this.el.chat.classList.add('active');
+    clearTimeout(this.chatFadeTimer);
+    this.chatFadeTimer = setTimeout(() => {
+      if (!this.chatOpen) this.el.chat.classList.remove('active');
+    }, 9000);
+    this.el.chatLog.scrollTop = this.el.chatLog.scrollHeight;
+  }
+
+  openChat(prefix = '') {
+    this.chatOpen = true;
+    this.el.chat.classList.add('active');
+    this.el.chatRow.classList.remove('hidden');
+    this.el.chatPrefix.textContent = prefix;
+    this.el.chatInput.value = '';
+    setTimeout(() => this.el.chatInput.focus({ preventScroll: true }), 0);
+  }
+
+  closeChat() {
+    this.chatOpen = false;
+    this.el.chatRow.classList.add('hidden');
+    this.el.chatInput.blur();
+    this.el.chat.classList.remove('active');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Inventory and containers                                            */
+  /* ------------------------------------------------------------------ */
+
+  openInventoryScreen(view) {
+    this.invView = view;
     this.inventoryOpen = true;
+    this.invMode = view.listMode || 'recipes';
+    this.invSearch = '';
+    if (this.el.inventorySearch) this.el.inventorySearch.value = '';
     this.el.inventory.classList.remove('hidden');
-    this.setSelectedSlot(selected);
+    this.el.inventoryTitle.textContent = view.title || 'Inventory';
+    this.el.tabBlocks.classList.toggle('hidden', !view.creative);
+    this.refreshInventoryScreen(view);
     setTimeout(() => {
-      const first = this.el.inventoryGrid.querySelector('.block-cell');
+      const first = this.el.inventoryMain.querySelector('.slot');
       if (first) first.focus({ preventScroll: true });
     }, 0);
   }
 
-  closeInventory() {
+  refreshInventoryScreen(view) {
+    if (view) this.invView = view;
+    const v = this.invView;
+    if (!v || !this.inventoryOpen) return;
+    this.cursorStack = v.cursor || null;
+
+    // Container part.
+    const hasContainer = !!v.entity;
+    this.el.inventoryContainer.classList.toggle('hidden', !hasContainer);
+    if (hasContainer) {
+      const isFurnace = v.entity.type === 'furnace';
+      this.el.containerLabel.textContent = isFurnace ? 'Furnace' : 'Chest';
+      const count = isFurnace ? 3 : 27;
+      this.renderSlots(this.el.containerGrid, count, (i) => this.containerStack(i), 'container', {
+        rows: isFurnace ? 1 : 3,
+      });
+      this.el.furnaceInfo.classList.toggle('hidden', !isFurnace);
+      if (isFurnace) {
+        const burn = v.entity.burnMax ? Math.min(1, v.entity.burn / v.entity.burnMax) : 0;
+        this.el.furnaceBurn.style.height = `${burn * 100}%`;
+        this.el.furnaceProgress.style.width = `${Math.min(1, (v.entity.progress || 0) / 9) * 100}%`;
+      }
+    }
+
+    // Player inventory.
+    this.renderSlots(this.el.inventoryMain, 27, (i) => this.invStack(i + 9), 'inv', { rows: 3 });
+    this.renderSlots(this.el.inventoryHotbar, 9, (i) => this.invStack(i), 'inv', { rows: 1, hotbar: true });
+
+    this.el.inventoryMode.textContent = v.creative ? '· creative' : '';
+    if (this.el.inventoryStats) {
+      const s = v.survival;
+      this.el.inventoryStats.textContent = s
+        ? `Health ${Math.ceil(s.health)}/20 · Hunger ${Math.ceil(s.hunger)}/20${s.creative ? ' · creative mode' : ''}`
+        : '';
+    }
+
+    this.el.tabRecipes.classList.toggle('active', this.invMode === 'recipes');
+    this.el.tabBlocks.classList.toggle('active', this.invMode === 'blocks');
+    this.el.inventorySearch.classList.toggle('hidden', this.invMode !== 'blocks');
+    this.renderInventoryList();
+    this.renderCursor();
+  }
+
+  containerStack(index) {
+    const entity = this.invView?.entity;
+    if (!entity) return null;
+    if (entity.type === 'chest') return entity.slots[index] || null;
+    if (index === 0) return entity.input || null;
+    if (index === 1) return entity.fuel || null;
+    if (index === 2) return entity.output || null;
+    return null;
+  }
+
+  invStack(index) {
+    const inv = this.invView?.inventory;
+    return inv ? inv.slots[index] || null : null;
+  }
+
+  renderSlots(grid, count, getStack, kind, opts = {}) {
+    if (!grid) return;
+    grid.innerHTML = '';
+    grid.style.setProperty('--cols', String(opts.hotbar ? 9 : 9));
+    for (let i = 0; i < count; i++) {
+      const stack = getStack(i);
+      const button = this.makeSlot(stack, kind, i);
+      grid.append(button);
+    }
+  }
+
+  makeSlot(stack, kind, index) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'slot';
+    const def = stack ? itemDef(stack.id) : null;
+    button.title = def ? `${def.name}${stack.count > 1 ? ` ×${stack.count}` : ''}` : 'Empty';
+    button.dataset.kind = kind;
+    button.dataset.index = String(index);
+    if (stack) {
+      const icon = getItemIcon(stack.id, 48);
+      if (icon) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 48;
+        canvas.height = 48;
+        canvas.getContext('2d').drawImage(icon, 0, 0);
+        button.append(canvas);
+      }
+      if (stack.count > 1) button.append(el('span', 'slot-count', String(stack.count)));
+      if (def && def.durability) {
+        const bar = el('span', 'slot-durability');
+        const fill = el('i');
+        fill.style.width = `${Math.max(0, Math.min(1, (stack.dur ?? def.durability) / def.durability)) * 100}%`;
+        bar.append(fill);
+        button.append(bar);
+      }
+    }
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      this.callbacks.onUiSound?.();
+      this.callbacks.onInvSlot?.({ kind, index, right: false, shift: event.shiftKey });
+    });
+    button.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      this.callbacks.onInvSlot?.({ kind, index, right: true, shift: event.shiftKey });
+    });
+    return button;
+  }
+
+  renderInventoryList() {
+    const list = this.el.inventoryList;
+    if (!list || !this.invView) return;
+    list.innerHTML = '';
+    if (this.invMode === 'blocks') {
+      this.el.inventoryListTitle.textContent = 'Blocks';
+      const query = this.invSearch.trim().toLowerCase();
+      for (const block of PICKABLE_BLOCKS) {
+        if (query && !block.name.toLowerCase().includes(query)) continue;
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'list-row';
+        const icon = getBlockIcon(block.id, 40);
+        const canvas = document.createElement('canvas');
+        canvas.width = 40;
+        canvas.height = 40;
+        canvas.getContext('2d').drawImage(icon, 0, 0);
+        row.append(canvas, el('span', 'list-name', block.name));
+        row.addEventListener('click', () => {
+          this.callbacks.onUiSound?.();
+          this.callbacks.onCreativePick?.(block.id);
+        });
+        list.append(row);
+      }
+      if (!list.childElementCount) list.append(el('p', 'list-empty', 'No blocks match that search.'));
+      return;
+    }
+
+    this.el.inventoryListTitle.textContent = 'Crafting';
+    const recipes = this.invView.recipes || [];
+    let shown = 0;
+    for (const entry of recipes) {
+      const { recipe, available, blocked } = entry;
+      const def = itemDef(recipe.out);
+      if (!def) continue;
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = `list-row recipe${available ? '' : ' disabled'}${blocked ? ' blocked' : ''}`;
+      row.disabled = !available;
+      const icon = getItemIcon(recipe.out, 40);
+      const canvas = document.createElement('canvas');
+      canvas.width = 40;
+      canvas.height = 40;
+      if (icon) canvas.getContext('2d').drawImage(icon, 0, 0);
+      row.append(canvas);
+      const text = el('span', 'recipe-text');
+      text.append(el('span', 'list-name', `${def.name}${recipe.count > 1 ? ` ×${recipe.count}` : ''}`));
+      const ingredients = el('span', 'recipe-ingredients');
+      for (const [id, count] of recipe.in) {
+        const ing = itemDef(id);
+        const have = this.invView.inventory.count(id);
+        ingredients.append(el('span', `ingredient${have >= count ? '' : ' missing'}`, `${ing ? ing.name : '?'} ${have}/${count}`));
+      }
+      if (blocked) ingredients.append(el('span', 'ingredient missing', 'needs a crafting table'));
+      text.append(ingredients);
+      row.append(text);
+      row.addEventListener('click', () => {
+        this.callbacks.onUiSound?.();
+        this.callbacks.onCraft?.(recipe);
+      });
+      list.append(row);
+      shown++;
+    }
+    if (!shown) list.append(el('p', 'list-empty', 'Nothing craftable yet — punch a tree!'));
+  }
+
+  setInventoryMode(mode) {
+    this.invMode = mode;
+    this.refreshInventoryScreen();
+  }
+
+  renderCursor() {
+    const node = this.el.inventoryCursor;
+    if (!node) return;
+    const stack = this.cursorStack;
+    if (!stack) {
+      node.classList.add('hidden');
+      node.innerHTML = '';
+      return;
+    }
+    const icon = getItemIcon(stack.id, 48);
+    node.innerHTML = '';
+    if (icon) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 48;
+      canvas.height = 48;
+      canvas.getContext('2d').drawImage(icon, 0, 0);
+      node.append(canvas);
+    }
+    if (stack.count > 1) node.append(el('span', 'slot-count', String(stack.count)));
+    node.classList.remove('hidden');
+    this.positionCursor();
+  }
+
+  positionCursor() {
+    const node = this.el.inventoryCursor;
+    if (!node || node.classList.contains('hidden')) return;
+    node.style.transform = `translate(${this.lastCursorEvent.x - 24}px, ${this.lastCursorEvent.y - 24}px)`;
+  }
+
+  closeInventoryScreen() {
     this.inventoryOpen = false;
+    this.invView = null;
+    this.cursorStack = null;
     this.el.inventory.classList.add('hidden');
+    this.el.inventoryCursor?.classList.add('hidden');
+    this.setMining(0);
   }
 
   /* ------------------------------------------------------------------ */
