@@ -55,6 +55,14 @@ export const MOB_TYPES = {
     accent: '#c9b9a8',
     drops: [{ id: I.MUTTON, min: 1, max: 2 }, { id: B.WOOL_WHITE, min: 1, max: 2 }],
   },
+  titan: {
+    name: 'Ember Titan', boss: true, hp: 90, speed: 1.8, hostile: true, damage: 6, width: 1.8, height: 3.5,
+    body: '#772e21', head: '#db6928', accent: '#ffbd42', drops: [{ id: B.GLOWSTONE, min: 6, max: 10 }],
+  },
+  warden: {
+    name: 'Void Warden', boss: true, hp: 72, speed: 3.1, hostile: true, damage: 5, width: 1.2, height: 3.2,
+    body: '#332543', head: '#593378', accent: '#d987ff', drops: [{ id: I.DIAMOND, min: 1, max: 3 }],
+  },
   zombie: {
     name: 'Zombie',
     hp: 20,
@@ -106,6 +114,15 @@ function buildModel(type) {
   const headSize = type === 'chicken' ? 0.3 : 0.42 * scale;
   const head = box(headSize, headSize, headSize, def.head, bodyY + bodyHeight * 0.55, 0, def.width * 0.34);
   group.add(head);
+
+  if (def.boss) {
+    for (const side of [-1, 1]) {
+      const horn = box(0.24, type === 'titan' ? 0.8 : 1.2, 0.28, def.accent,
+        head.position.y + headSize * 0.48, side * headSize * 0.48, head.position.z);
+      horn.rotation.z = -side * 0.38;
+      group.add(horn);
+    }
+  }
 
   // Eyes.
   const eyeGeo = new THREE.BoxGeometry(headSize * 0.18, headSize * 0.18, 0.02);
@@ -447,6 +464,12 @@ export class MobManager {
     const distanceToPlayer = Math.hypot(x - player.pos.x, z - player.pos.z);
     if (distanceToPlayer < 10) return;
 
+    const realm = this.world.generator.dimension;
+    if (realm === 'nether' || realm === 'end') {
+      const boss = realm === 'nether' ? 'titan' : 'warden';
+      if (!this.mobs.some(m => m.type === boss)) this.add(boss, x, y, z);
+      return;
+    }
     const hostile = isNight && Math.random() < 0.55;
     const type = hostile ? 'zombie' : PASSIVE[Math.floor(Math.random() * PASSIVE.length)];
     // Animals prefer day, zombies only at night.

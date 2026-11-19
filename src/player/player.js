@@ -193,7 +193,10 @@ export class Player {
     }
     if (this.pos.y < -20) {
       // Safety net: respawn above the world if something goes wrong.
-      this.pos.y = 100;
+      if (this.world.generator.dimension === 'end') {
+        const spawn = this.world.findSpawn();
+        this.pos.set(spawn.x + 0.5, spawn.y, spawn.z + 0.5);
+      } else this.pos.y = 100;
       this.vel.set(0, 0, 0);
     }
     return { prevY, inWater: this.inWater, sprinting };

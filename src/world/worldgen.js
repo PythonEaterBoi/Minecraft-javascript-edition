@@ -35,6 +35,11 @@ export class WorldGenerator {
 
   /** Continuous terrain height at world coordinates. */
   heightAt(x, z) {
+    if (this.dimension === 'nether') return 32 + 24 * fbm2(x * .035, z * .035, 3, this.seed);
+    if (this.dimension === 'end') {
+      const island = Math.max(1 - Math.hypot(x, z) / 50, fbm2(x * .025, z * .025, 3, this.seed) - .45);
+      return island > 0 ? 48 + island * 10 : -1;
+    }
     const s = this.seed;
     const cont = fbm2(x * 0.0032, z * 0.0032, 4, s + 11);
     const hills = fbm2(x * 0.016, z * 0.016, 3, s + 23);
@@ -48,6 +53,8 @@ export class WorldGenerator {
   }
 
   biomeAt(x, z, height = this.heightAt(x, z)) {
+    if (this.dimension === 'nether') return 'Nether';
+    if (this.dimension === 'end') return 'The End';
     const h = Math.floor(height);
     if (h <= SEA_LEVEL - 1) return BIOME.OCEAN;
     if (h <= SEA_LEVEL + BEACH_BAND) return BIOME.BEACH;
@@ -71,6 +78,17 @@ export class WorldGenerator {
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
         const wx = baseX + lx;
         const wz = baseZ + lz;
+        if (this.dimension === 'nether' || this.dimension === 'end') {
+          const top = Math.floor(this.heightAt(wx, wz));
+          const end = this.dimension === 'end';
+          for (let y = end ? 44 : 0; y <= top; y++) {
+            chunk.set(lx, y, lz, end ? B.SANDSTONE : y === 0 ? B.BEDROCK : y === top ? B.RED_SANDSTONE : B.TERRACOTTA);
+          }
+          if (!end && rand2(wx, wz, seed) < .014) chunk.set(lx, top + 1, lz, B.GLOWSTONE);
+          if (end && top > 0 && (wx & 31) < 3 && (wz & 31) < 3 && Math.hypot(wx, wz) > 10)
+            for (let y = top + 1; y < 72; y++) chunk.set(lx, y, lz, B.OBSIDIAN);
+          continue;
+        }
         const rawH = this.heightAt(wx, wz);
         const h = Math.max(4, Math.min(CHUNK_HEIGHT - 14, Math.floor(rawH)));
         const biome = this.biomeAt(wx, wz, rawH);
@@ -202,8 +220,10 @@ export class WorldGenerator {
       }
     }
 
-    this.stampTrees(chunk);
-    this.stampPlants(chunk);
+    if (!this.dimension || this.dimension === 'overworld') {
+      this.stampTrees(chunk);
+      this.stampPlants(chunk);
+    }
     if (edits) chunk.applyEdits(edits);
     chunk.recomputeHeightMap();
     chunk.generated = true;
