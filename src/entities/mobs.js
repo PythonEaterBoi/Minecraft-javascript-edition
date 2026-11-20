@@ -57,11 +57,20 @@ export const MOB_TYPES = {
   },
   titan: {
     name: 'Ember Titan', boss: true, hp: 90, speed: 1.8, hostile: true, damage: 6, width: 1.8, height: 3.5,
-    body: '#772e21', head: '#db6928', accent: '#ffbd42', drops: [{ id: B.GLOWSTONE, min: 6, max: 10 }],
+    body: '#772e21', head: '#db6928', accent: '#ffbd42',
+    drops: [{ id: I.EMBER_EYE, min: 1, max: 1 }, { id: B.GLOWSTONE, min: 6, max: 10 }, { id: I.NETHER_QUARTZ, min: 4, max: 8 }],
+    ability: 'slam',
   },
   warden: {
     name: 'Void Warden', boss: true, hp: 72, speed: 3.1, hostile: true, damage: 5, width: 1.2, height: 3.2,
-    body: '#332543', head: '#593378', accent: '#d987ff', drops: [{ id: I.DIAMOND, min: 1, max: 3 }],
+    body: '#332543', head: '#593378', accent: '#d987ff',
+    drops: [{ id: I.DIAMOND, min: 3, max: 5 }, { id: B.PURPUR, min: 8, max: 16 }],
+    ability: 'blink',
+  },
+  piglin: {
+    name: 'Zombified Piglin', hp: 20, speed: 2.4, hostile: true, damage: 3, width: 0.6, height: 1.9,
+    body: '#c98b6b', head: '#e5a585', accent: '#5f8a48',
+    drops: [{ id: I.ROTTEN_FLESH, min: 0, max: 2 }, { id: I.GOLD_INGOT, min: 0, max: 1 }],
   },
   zombie: {
     name: 'Zombie',
@@ -274,6 +283,29 @@ export class Mob {
       }
     }
 
+    // Boss abilities: the Titan slams the ground, the Warden blinks behind you.
+    if (def.boss && def.ability && dist < 20 && Math.abs(dy) < 10) {
+      this.abilityTimer = (this.abilityTimer ?? 4) - dt;
+      if (this.abilityTimer <= 0) {
+        if (def.ability === 'slam' && dist < 5.5 && this.onGround) {
+          this.abilityTimer = 6;
+          this.vel.y = 7;
+          callbacks.onDamage?.(4, this);
+          callbacks.onAbility?.(this, 'slam');
+        } else if (def.ability === 'blink' && dist > 3) {
+          const tx = player.pos.x + (dx / (dist || 1)) * 2.5;
+          const tz = player.pos.z + (dz / (dist || 1)) * 2.5;
+          const ground = world.getHeight(Math.floor(tx), Math.floor(tz));
+          if (ground > 0 && Math.abs(ground + 1 - player.pos.y) < 4) {
+            this.pos.set(tx, ground + 1, tz);
+            this.vel.set(0, 0, 0);
+            this.abilityTimer = 7;
+            callbacks.onAbility?.(this, 'blink');
+          } else this.abilityTimer = 1;
+        } else if (def.ability === 'slam') this.abilityTimer = 0.5;
+      }
+    }
+
     // Smooth turn.
     let delta = wantYaw - this.yaw;
     while (delta > Math.PI) delta -= Math.PI * 2;
@@ -331,6 +363,12 @@ export class Mob {
       this.pos.y = nextY;
     }
 
+    if (def.boss && this.pos.y < 20) {
+      // Bosses never fall out of the world: they climb back to the centre.
+      const ground = world.getHeight(0, 0);
+      this.pos.set(0.5, Math.max(ground + 1, 60), 0.5);
+      this.vel.set(0, 0, 0);
+    }
     if (this.pos.y < -10 || this.pos.y > 200) this.dead = true;
 
     // Animation.
@@ -447,7 +485,7 @@ export class MobManager {
   }
 
   /** Spawn a random animal or, at night, a zombie near the player. */
-  trySpawn(player, isNight) {
+  trySpawn(player, isNight, canSpawnBoss = () => true) {
     if (!this.world || this.mobs.length >= this.maxMobs) return;
     const angle = Math.random() * Math.PI * 2;
     const distance = 14 + Math.random() * 22;
@@ -467,7 +505,13 @@ export class MobManager {
     const realm = this.world.generator.dimension;
     if (realm === 'nether' || realm === 'end') {
       const boss = realm === 'nether' ? 'titan' : 'warden';
-      if (!this.mobs.some(m => m.type === boss)) this.add(boss, x, y, z);
+      if (!this.mobs.some((m) => m.type === boss) && canSpawnBoss(boss)) {
+        this.add(boss, x + 0.5, y, z + 0.5);
+        return;
+      }
+      if (realm === 'nether' && Math.random() < 0.5 && this.mobs.filter((m) => m.type === 'piglin').length < 6) {
+        this.add('piglin', x + 0.5, y, z + 0.5);
+      }
       return;
     }
     const hostile = isNight && Math.random() < 0.55;
@@ -483,12 +527,12 @@ export class MobManager {
     const isNight = callbacks.isNight ?? false;
     if (this.spawnTimer > 3.5) {
       this.spawnTimer = 0;
-      if (callbacks.allowSpawn !== false) this.trySpawn(player, isNight);
+      if (callbacks.allowSpawn !== false) this.trySpawn(player, isNight, callbacks.canSpawnBoss);
     }
 
     for (const mob of [...this.mobs]) {
       mob.update(dt, world, player, callbacks);
-      const far = Math.hypot(mob.pos.x - player.pos.x, mob.pos.z - player.pos.z) > 72;
+      const far = Math.hypot(mob.pos.x - player.pos.x, mob.pos.z - player.pos.z) > (mob.def.boss ? 140 : 72);
       if (mob.dead || far) {
         if (mob.dead && !mob.dropped) {
           mob.dropped = true;
@@ -496,6 +540,7 @@ export class MobManager {
             const count = drop.min + Math.floor(Math.random() * (drop.max - drop.min + 1));
             if (count > 0) callbacks.onDrop?.(drop.id, count);
           }
+          callbacks.onKilled?.(mob);
         }
         this.remove(mob);
       }

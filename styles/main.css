@@ -1798,3 +1798,54 @@ body.dead #game-canvas {
   color: #9c9c9c;
   text-align: right;
 }
+
+/* ---------------- Boss bar and portal overlay ---------------- */
+.boss-bar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, 70vw);
+  text-align: center;
+  pointer-events: none;
+  z-index: 6;
+}
+.boss-name {
+  font-size: 14px;
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.75);
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+.boss-track {
+  height: 10px;
+  border: 2px solid rgba(0, 0, 0, 0.75);
+  background: rgba(20, 10, 10, 0.6);
+}
+.boss-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(#ff8a3d, #c43d16);
+  transition: width 0.2s ease-out;
+}
+.boss-bar[data-boss='warden'] .boss-fill {
+  background: linear-gradient(#e2a3ff, #7b35b8);
+}
+#portal-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 3;
+  background: radial-gradient(circle at 50% 50%, rgba(170, 80, 255, 0.15), rgba(90, 20, 170, 0.85));
+  transition: opacity 0.15s linear;
+}
+#portal-overlay[data-kind='end'] {
+  background: radial-gradient(circle at 50% 50%, rgba(40, 200, 180, 0.12), rgba(5, 15, 25, 0.92));
+}
+@media (prefers-reduced-motion: reduce) {
+  #portal-overlay,
+  .boss-fill {
+    transition: none;
+  }
+}

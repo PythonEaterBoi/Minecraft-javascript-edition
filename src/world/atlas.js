@@ -944,6 +944,101 @@ PAINTERS[TILE.TORCH] = (b) => {
   b.rect(6, 8, 4, 1, '#c96a2f');
 };
 
+// 103 NETHERRACK
+PAINTERS[TILE.NETHERRACK] = (b) => {
+  b.fill('#6e2a2a');
+  b.speckle(['#7a3030', '#5e2222', '#843838', '#672727'], 0.7);
+  b.blobs(8, ['#4f1a1a', '#934242'], 1, 2);
+};
+// 104 SOUL_SAND
+PAINTERS[TILE.SOUL_SAND] = (b) => {
+  b.fill('#4f3b2d');
+  b.speckle(['#5a4434', '#443226', '#614a39'], 0.6);
+  for (let i = 0; i < 3; i++) {
+    const x = 2 + Math.floor(b.rand() * 10);
+    const y = 2 + Math.floor(b.rand() * 9);
+    b.rect(x, y, 1, 2, '#2c1f17');
+    b.rect(x + 2, y, 1, 2, '#2c1f17');
+    b.rect(x, y + 3, 3, 1, '#2c1f17');
+  }
+};
+// 105 NETHER_QUARTZ_ORE
+PAINTERS[TILE.NETHER_QUARTZ_ORE] = (b) => {
+  PAINTERS[TILE.NETHERRACK](b);
+  for (let i = 0; i < 6; i++) {
+    const x = 1 + Math.floor(b.rand() * 12);
+    const y = 1 + Math.floor(b.rand() * 12);
+    b.rect(x, y, 3, 1, '#ebe3d6');
+    b.dot(x + 1, y + 1, '#c9bfae');
+    b.dot(x, y - 1 < 0 ? y : y - 1, '#fffaf0');
+  }
+};
+// 106 MAGMA
+PAINTERS[TILE.MAGMA] = (b) => {
+  b.fill('#5a1f12');
+  b.speckle(['#6b2614', '#4a180e'], 0.5);
+  for (let i = 0; i < 9; i++) {
+    const x = Math.floor(b.rand() * 14);
+    const y = Math.floor(b.rand() * 14);
+    b.rect(x, y, 2 + Math.floor(b.rand() * 2), 1, '#ff8a1e');
+    b.dot(x, y + 1, '#ffc23d');
+  }
+};
+// 107 NETHER_BRICKS
+PAINTERS[TILE.NETHER_BRICKS] = (b) => {
+  b.fill('#2c1418');
+  for (let row = 0; row < 4; row++) {
+    const y = row * 4;
+    const offset = row % 2 === 0 ? 0 : 4;
+    for (let i = -1; i < 3; i++) {
+      const x = offset + i * 8;
+      b.rect(Math.max(0, x), y, Math.min(7, 16 - Math.max(0, x)), 3, '#46202a');
+      b.rect(Math.max(0, x), y, Math.min(7, 16 - Math.max(0, x)), 1, '#552a33');
+    }
+  }
+};
+// 108 END_STONE
+PAINTERS[TILE.END_STONE] = (b) => {
+  b.fill('#dbdca0');
+  b.speckle(['#e3e4ab', '#cfd093', '#e8e9b6', '#d5d699'], 0.6);
+  b.blobs(7, ['#c4c486', '#ececc0'], 1, 2);
+};
+// 109 PURPUR
+PAINTERS[TILE.PURPUR] = (b) => {
+  b.fill('#a77aa7');
+  b.speckle(['#b086b0', '#9c6e9c', '#b58eb5'], 0.4);
+  b.hLine(0, '#8a5f8a');
+  b.hLine(8, '#8a5f8a');
+  b.vLine(0, '#8a5f8a', 0, 8);
+  b.vLine(8, '#8a5f8a', 8, 16);
+  b.hLine(1, '#c7a2c7', 1, 16);
+  b.hLine(9, '#c7a2c7', 1, 16);
+};
+// 110 NETHER_PORTAL (translucent swirl)
+PAINTERS[TILE.NETHER_PORTAL] = (b) => {
+  b.rect(0, 0, 16, 16, 'rgba(110,30,200,0.62)');
+  for (let i = 0; i < 26; i++) {
+    const x = Math.floor(b.rand() * 15);
+    const y = Math.floor(b.rand() * 16);
+    b.rect(x, y, 2, 1, b.rand() < 0.5 ? 'rgba(190,110,255,0.8)' : 'rgba(70,10,150,0.75)');
+  }
+};
+// 111 END_PORTAL (starry void)
+PAINTERS[TILE.END_PORTAL] = (b) => {
+  b.rect(0, 0, 16, 16, 'rgba(10,22,30,0.92)');
+  for (let i = 0; i < 18; i++) {
+    const x = Math.floor(b.rand() * 16);
+    const y = Math.floor(b.rand() * 16);
+    b.dot(x, y, ['rgba(90,230,200,0.95)', 'rgba(160,120,255,0.9)', 'rgba(230,250,255,0.95)'][i % 3]);
+  }
+};
+// 112 SHROOMLIGHT
+PAINTERS[TILE.SHROOMLIGHT] = (b) => {
+  b.fill('#f09a3e');
+  b.speckle(['#f6ac52', '#e88a2e', '#ffc46e'], 0.6);
+  b.blobs(6, ['#ffe0a0', '#d9742a'], 1, 2);
+};
+
 /* ------------------------------------------------------------------ */
 /* Atlas assembly                                                      */
 /* ------------------------------------------------------------------ */

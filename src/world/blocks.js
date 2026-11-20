@@ -111,6 +111,16 @@ export const TILE = {
   BONE_BLOCK: 100,
   NETHERITE_BLOCK: 101,
   TORCH: 102,
+  NETHERRACK: 103,
+  SOUL_SAND: 104,
+  NETHER_QUARTZ_ORE: 105,
+  MAGMA: 106,
+  NETHER_BRICKS: 107,
+  END_STONE: 108,
+  PURPUR: 109,
+  NETHER_PORTAL: 110,
+  END_PORTAL: 111,
+  SHROOMLIGHT: 112,
 };
 
 // Face order: 0:+X 1:-X 2:+Y 3:-Y 4:+Z 5:-Z
@@ -208,6 +218,16 @@ export const B = {
   BONE_BLOCK: 88,
   NETHERITE_BLOCK: 89,
   TORCH: 90,
+  NETHERRACK: 91,
+  SOUL_SAND: 92,
+  NETHER_QUARTZ_ORE: 93,
+  MAGMA: 94,
+  NETHER_BRICKS: 95,
+  END_STONE: 96,
+  PURPUR: 97,
+  NETHER_PORTAL: 98,
+  END_PORTAL: 99,
+  SHROOMLIGHT: 100,
 };
 
 const TOOL_TIER = { none: 0, wood: 1, stone: 2, iron: 3, gold: 1, diamond: 4 };
@@ -238,6 +258,8 @@ function def(id, name, tiles, opts = {}) {
     container: opts.container || null,
     light: opts.light || 0,
     blast: !!opts.blast,
+    hurts: opts.hurts || 0,
+    portal: opts.portal || null,
   };
 }
 
@@ -270,7 +292,9 @@ BLOCKS[B.DIRT] = def(B.DIRT, 'Dirt', TILE.DIRT, { hardness: 0.5, tool: 'shovel' 
 BLOCKS[B.STONE] = def(B.STONE, 'Stone', TILE.STONE, { ...stoneHard, drop: B.COBBLE });
 BLOCKS[B.COBBLE] = def(B.COBBLE, 'Cobblestone', TILE.COBBLE, stoneHard);
 BLOCKS[B.SAND] = def(B.SAND, 'Sand', TILE.SAND, { hardness: 0.5, tool: 'shovel' });
-BLOCKS[B.GRAVEL] = def(B.GRAVEL, 'Gravel', TILE.GRAVEL, { hardness: 0.6, tool: 'shovel' });
+BLOCKS[B.GRAVEL] = def(B.GRAVEL, 'Gravel', TILE.GRAVEL, {
+  hardness: 0.6, tool: 'shovel', drops: [{ id: I.FLINT, count: 1, chance: 0.15 }, { id: B.GRAVEL, count: 1, chance: 0.85 }],
+});
 BLOCKS[B.WATER] = def(B.WATER, 'Water', TILE.WATER, {
   solid: false, opaque: false, liquid: true, translucent: true, pickable: false, hardness: 0,
 });
@@ -397,7 +421,7 @@ BLOCKS[B.FLOWER_YELLOW] = def(B.FLOWER_YELLOW, 'Dandelion', TILE.FLOWER_YELLOW, 
 });
 BLOCKS[B.TALL_GRASS] = def(B.TALL_GRASS, 'Tall Grass', TILE.TALL_GRASS, {
   solid: false, opaque: false, cross: true, hardness: 0.1, drop: null,
-  drops: [{ id: I.RAW_IRON1, count: 1, chance: 0.35 }],
+  drops: [{ id: I.WHEAT, count: 1, chance: 0.12 }],
 });
 BLOCKS[B.DEAD_BUSH] = def(B.DEAD_BUSH, 'Dead Bush', TILE.DEAD_BUSH, {
   solid: false, opaque: false, cross: true, hardness: 0.1, drop: I.STICK, drops: [{ id: I.STICK, count: 1, chance: 1 }],
@@ -431,7 +455,7 @@ BLOCKS[B.MUSHROOM_BROWN] = def(B.MUSHROOM_BROWN, 'Brown Mushroom', TILE.MUSHROOM
 });
 BLOCKS[B.AMETHYST] = def(B.AMETHYST, 'Amethyst Block', TILE.AMETHYST, { hardness: 1.5, tool: 'pickaxe', tier: 2, light: 0.4 });
 BLOCKS[B.MELON] = def(B.MELON, 'Melon', { top: TILE.MELON_TOP, bottom: TILE.MELON_TOP, side: TILE.MELON_SIDE }, {
-  hardness: 1, tool: 'axe', drop: I.RAW_IRON2, drops: [{ id: I.RAW_IRON2, count: 3, chance: 1 }],
+  hardness: 1, tool: 'axe', drop: I.MELON_SLICE, drops: [{ id: I.MELON_SLICE, count: 3, chance: 1 }, { id: I.MELON_SLICE, count: 2, chance: 0.5 }],
 });
 BLOCKS[B.LANTERN] = def(B.LANTERN, 'Lantern', TILE.LANTERN, {
   opaque: false, hardness: 0.8, tool: 'pickaxe', light: 1,
@@ -442,6 +466,25 @@ BLOCKS[B.NETHERITE_BLOCK] = def(B.NETHERITE_BLOCK, 'Block of Netherite', TILE.NE
 });
 BLOCKS[B.TORCH] = def(B.TORCH, 'Torch', TILE.TORCH, {
   solid: false, opaque: false, cross: true, hardness: 0.05, light: 1,
+});
+
+// Nether and End blocks.
+BLOCKS[B.NETHERRACK] = def(B.NETHERRACK, 'Netherrack', TILE.NETHERRACK, { hardness: 0.4, tool: 'pickaxe', tier: 1 });
+BLOCKS[B.SOUL_SAND] = def(B.SOUL_SAND, 'Soul Sand', TILE.SOUL_SAND, { hardness: 0.5, tool: 'shovel' });
+BLOCKS[B.NETHER_QUARTZ_ORE] = def(B.NETHER_QUARTZ_ORE, 'Nether Quartz Ore', TILE.NETHER_QUARTZ_ORE, {
+  hardness: 3, tool: 'pickaxe', tier: 1, drop: I.NETHER_QUARTZ,
+  drops: [{ id: I.NETHER_QUARTZ, count: 1, chance: 1 }, { id: I.NETHER_QUARTZ, count: 1, chance: 0.35 }],
+});
+BLOCKS[B.MAGMA] = def(B.MAGMA, 'Magma Block', TILE.MAGMA, { hardness: 0.5, tool: 'pickaxe', tier: 1, light: 0.6, hurts: 1 });
+BLOCKS[B.NETHER_BRICKS] = def(B.NETHER_BRICKS, 'Nether Bricks', TILE.NETHER_BRICKS, { hardness: 2, tool: 'pickaxe', tier: 1 });
+BLOCKS[B.END_STONE] = def(B.END_STONE, 'End Stone', TILE.END_STONE, { hardness: 3, tool: 'pickaxe', tier: 1 });
+BLOCKS[B.PURPUR] = def(B.PURPUR, 'Purpur Block', TILE.PURPUR, { hardness: 1.5, tool: 'pickaxe', tier: 1 });
+BLOCKS[B.SHROOMLIGHT] = def(B.SHROOMLIGHT, 'Shroomlight', TILE.SHROOMLIGHT, { hardness: 1, tool: 'axe', light: 1 });
+BLOCKS[B.NETHER_PORTAL] = def(B.NETHER_PORTAL, 'Nether Portal', TILE.NETHER_PORTAL, {
+  solid: false, opaque: false, translucent: true, pickable: false, hardness: 0, drop: null, light: 0.8, portal: 'nether',
+});
+BLOCKS[B.END_PORTAL] = def(B.END_PORTAL, 'End Portal', TILE.END_PORTAL, {
+  solid: false, opaque: false, translucent: true, pickable: false, hardness: 0, drop: null, light: 0.8, portal: 'end',
 });
 
 /** Resolve the atlas tile used by a block face. */

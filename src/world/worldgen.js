@@ -33,12 +33,116 @@ export class WorldGenerator {
     return fbm2(x * 0.0031 - 500, z * 0.0031 + 700, 2, this.seed + 83);
   }
 
+  /* ---------------- Nether and End shape helpers ---------------- */
+
+  netherValley(x, z) {
+    return fbm2(x * 0.011 + 300, z * 0.011 - 120, 2, this.seed + 907) < -0.3;
+  }
+
+  netherSpire(x, z) {
+    const n = fbm2(x * 0.045 + 50, z * 0.045 + 90, 2, this.seed + 913);
+    return Math.min(1, Math.max(0, (n - 0.35) / 0.3));
+  }
+
+  netherHeight(x, z) {
+    const base = 30 + 16 * fbm2(x * 0.03, z * 0.03, 3, this.seed + 901);
+    const valley = this.netherValley(x, z) ? -5 : 0;
+    const spire = this.netherSpire(x, z);
+    return base + valley + spire * spire * 34;
+  }
+
+  endIsland(x, z) {
+    const d = Math.hypot(x, z);
+    const central = 1 - d / 62;
+    // Outer islands only appear past a void gap around the central island.
+    const outer = d > 90 ? fbm2(x * 0.02, z * 0.02, 3, this.seed + 931) - 0.25 : -1;
+    return Math.max(central, outer * 2.2);
+  }
+
+  /** Obsidian pillars ring the End's central island. Returns pillar top or -1. */
+  endPillar(x, z) {
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const cx = Math.round(Math.cos(a) * 34);
+      const cz = Math.round(Math.sin(a) * 34);
+      const r = 2 + (i % 3) * 0.6;
+      if ((x - cx) ** 2 + (z - cz) ** 2 <= r * r) return 72 + ((i * 5) % 14);
+    }
+    return -1;
+  }
+
+  generateNether(chunk, blocks, baseX, baseZ) {
+    const seed = this.seed;
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const wx = baseX + lx;
+        const wz = baseZ + lz;
+        const top = Math.min(CHUNK_HEIGHT - 6, Math.floor(this.netherHeight(wx, wz)));
+        const valley = this.netherValley(wx, wz);
+        const spire = this.netherSpire(wx, wz);
+        for (let y = 0; y <= top; y++) {
+          let id;
+          if (y === 0 || (y <= 2 && rand3(wx, y, wz, seed + 5) < 0.5)) id = B.BEDROCK;
+          else if (y >= top - 1 && valley) id = B.SOUL_SAND;
+          else if (y === top && top < 27) id = B.MAGMA;
+          else {
+            id = B.NETHERRACK;
+            const r = rand3(wx, y, wz, seed + 977);
+            if (r < 0.016) id = B.NETHER_QUARTZ_ORE;
+            else if (r > 0.996 && y < 20) id = B.MAGMA;
+          }
+          blocks[(y << 8) | (lz << 4) | lx] = id;
+        }
+        // Glowstone crowns on the peaks, shroomlights scattered in the wastes.
+        const r2 = rand2(wx, wz, seed + 983);
+        if (spire > 0.5 && r2 < 0.22) {
+          const h = 1 + Math.floor(rand2(wx, wz, seed + 984) * 3);
+          for (let y = top + 1; y <= Math.min(CHUNK_HEIGHT - 2, top + h); y++) blocks[(y << 8) | (lz << 4) | lx] = B.GLOWSTONE;
+        } else if (!valley && spire === 0 && r2 < 0.004) {
+          blocks[((top + 1) << 8) | (lz << 4) | lx] = B.SHROOMLIGHT;
+        }
+        // Ruined nether-brick pillars on a coarse grid.
+        const gx = ((wx % 56) + 56) % 56;
+        const gz = ((wz % 56) + 56) % 56;
+        if (gx < 2 && gz < 2 && spire < 0.2) {
+          const cell = rand2(Math.floor(wx / 56), Math.floor(wz / 56), seed + 991);
+          const h = 4 + Math.floor(cell * 6);
+          for (let y = top + 1; y <= Math.min(CHUNK_HEIGHT - 2, top + h); y++) blocks[(y << 8) | (lz << 4) | lx] = B.NETHER_BRICKS;
+        }
+      }
+    }
+  }
+
+  generateEnd(chunk, blocks, baseX, baseZ) {
+    const seed = this.seed;
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const wx = baseX + lx;
+        const wz = baseZ + lz;
+        const island = this.endIsland(wx, wz);
+        if (island <= 0) continue;
+        const top = Math.floor(48 + island * 12);
+        // Islands taper underneath so they read as floating.
+        const bottom = Math.floor(top - 3 - island * 22 - rand2(wx, wz, seed + 941) * 2);
+        for (let y = Math.max(1, bottom); y <= top; y++) blocks[(y << 8) | (lz << 4) | lx] = B.END_STONE;
+        const pillar = this.endPillar(wx, wz);
+        if (pillar > 0) {
+          for (let y = top + 1; y <= pillar; y++) blocks[(y << 8) | (lz << 4) | lx] = B.OBSIDIAN;
+        } else if (Math.hypot(wx, wz) > 100 && rand2(wx, wz, seed + 947) < 0.006) {
+          // Purpur ruins dot the outer islands.
+          const h = 2 + Math.floor(rand2(wx, wz, seed + 948) * 5);
+          for (let y = top + 1; y <= top + h; y++) blocks[(y << 8) | (lz << 4) | lx] = B.PURPUR;
+        }
+      }
+    }
+  }
+
   /** Continuous terrain height at world coordinates. */
   heightAt(x, z) {
-    if (this.dimension === 'nether') return 32 + 24 * fbm2(x * .035, z * .035, 3, this.seed);
+    if (this.dimension === 'nether') return this.netherHeight(x, z);
     if (this.dimension === 'end') {
-      const island = Math.max(1 - Math.hypot(x, z) / 50, fbm2(x * .025, z * .025, 3, this.seed) - .45);
-      return island > 0 ? 48 + island * 10 : -1;
+      const island = this.endIsland(x, z);
+      return island > 0 ? 48 + island * 12 : -1;
     }
     const s = this.seed;
     const cont = fbm2(x * 0.0032, z * 0.0032, 4, s + 11);
@@ -53,8 +157,11 @@ export class WorldGenerator {
   }
 
   biomeAt(x, z, height = this.heightAt(x, z)) {
-    if (this.dimension === 'nether') return 'Nether';
-    if (this.dimension === 'end') return 'The End';
+    if (this.dimension === 'nether') {
+      if (this.netherSpire(x, z) > 0.35) return 'Glowstone Peaks';
+      return this.netherValley(x, z) ? 'Soul Sand Valley' : 'Nether Wastes';
+    }
+    if (this.dimension === 'end') return Math.hypot(x, z) < 70 ? 'The End' : 'Outer Islands';
     const h = Math.floor(height);
     if (h <= SEA_LEVEL - 1) return BIOME.OCEAN;
     if (h <= SEA_LEVEL + BEACH_BAND) return BIOME.BEACH;
@@ -74,21 +181,19 @@ export class WorldGenerator {
     const baseZ = chunk.cz * CHUNK_SIZE;
     const seed = this.seed;
 
+    if (this.dimension === 'nether' || this.dimension === 'end') {
+      if (this.dimension === 'nether') this.generateNether(chunk, blocks, baseX, baseZ);
+      else this.generateEnd(chunk, blocks, baseX, baseZ);
+      if (edits) chunk.applyEdits(edits);
+      chunk.recomputeHeightMap();
+      chunk.generated = true;
+      return chunk;
+    }
+
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
         const wx = baseX + lx;
         const wz = baseZ + lz;
-        if (this.dimension === 'nether' || this.dimension === 'end') {
-          const top = Math.floor(this.heightAt(wx, wz));
-          const end = this.dimension === 'end';
-          for (let y = end ? 44 : 0; y <= top; y++) {
-            chunk.set(lx, y, lz, end ? B.SANDSTONE : y === 0 ? B.BEDROCK : y === top ? B.RED_SANDSTONE : B.TERRACOTTA);
-          }
-          if (!end && rand2(wx, wz, seed) < .014) chunk.set(lx, top + 1, lz, B.GLOWSTONE);
-          if (end && top > 0 && (wx & 31) < 3 && (wz & 31) < 3 && Math.hypot(wx, wz) > 10)
-            for (let y = top + 1; y < 72; y++) chunk.set(lx, y, lz, B.OBSIDIAN);
-          continue;
-        }
         const rawH = this.heightAt(wx, wz);
         const h = Math.max(4, Math.min(CHUNK_HEIGHT - 14, Math.floor(rawH)));
         const biome = this.biomeAt(wx, wz, rawH);
@@ -157,6 +262,7 @@ export class WorldGenerator {
             id = deepslate ? B.DEEPSLATE : B.STONE;
             const r = rand3(wx, y, wz, seed + 999);
             if (y < 14 && r < 0.0022) id = B.DIAMOND_ORE;
+            else if (y < 12 && r < 0.0062) id = B.OBSIDIAN;
             else if (y < 16 && r > 0.994) id = B.REDSTONE_ORE;
             else if (y < 24 && r > 0.9915) id = B.LAPIS_ORE;
             else if (y < 20 && r > 0.9988) id = B.EMERALD_ORE;

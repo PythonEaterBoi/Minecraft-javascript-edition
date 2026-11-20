@@ -227,6 +227,27 @@ function drawMaterial(ctx, id) {
       px(ctx, 11, 6, 3, 3, '#f7f0dd');
       px(ctx, 11, 10, 3, 3, '#f7f0dd');
       break;
+    case I.NETHER_QUARTZ:
+      shape(ctx, [[4, 10], [7, 4], [10, 5], [13, 9], [9, 13], [5, 13]], '#e8e0d2');
+      px(ctx, 7, 6, 2, 3, '#ffffff');
+      px(ctx, 9, 10, 2, 2, '#bfb5a4');
+      break;
+    case I.EMBER_EYE:
+      shape(ctx, [[3, 8], [6, 4], [10, 4], [13, 8], [10, 12], [6, 12]], '#ff7a1a');
+      px(ctx, 6, 6, 4, 4, '#ffd23d');
+      px(ctx, 7, 7, 2, 2, '#3a0d05');
+      px(ctx, 5, 5, 1, 1, '#fff2b0');
+      break;
+    case I.FLINT_AND_STEEL:
+      // steel ring
+      px(ctx, 3, 3, 6, 2, '#b8b8b8');
+      px(ctx, 3, 3, 2, 7, '#b8b8b8');
+      px(ctx, 7, 3, 2, 5, '#d8d8d8');
+      px(ctx, 3, 9, 4, 2, '#8f8f8f');
+      // flint
+      shape(ctx, [[8, 9], [12, 8], [14, 12], [11, 14], [8, 13]], '#3b3b44');
+      px(ctx, 10, 10, 2, 1, '#5a5a66');
+      break;
     default:
       px(ctx, 4, 4, 8, 8, '#8f8f8f');
   }

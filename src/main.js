@@ -28,6 +28,20 @@ import { Survival, MAX_HEALTH, MAX_HUNGER, MAX_AIR } from './player/survival.js'
 import { getPBRMaps, getEnvironment } from './world/pbr.js';
 
 const SAVE_KEY = 'mje.save.v1';
+
+// Realms. `light` pins the brightness (no day/night cycle), `tint` colours the terrain light.
+const DIMENSIONS = {
+  overworld: { name: 'the Overworld', tint: [1, 1, 1], arrival: 'Home sweet home' },
+  nether: {
+    name: 'the Nether', light: 0.6, tint: [1, 0.84, 0.74],
+    arrival: 'The Nether · the Ember Titan prowls the glowstone peaks',
+  },
+  end: {
+    name: 'the End', light: 0.42, tint: [0.88, 0.84, 1],
+    arrival: 'The End · defeat the Void Warden to open the way home',
+  },
+};
+const realmFog = (dimension) => (dimension === 'nether' ? 0x3d140e : 0x150d22);
 const SERVERS_KEY = 'mje.servers.v1';
 const DEFAULT_SEED = 38;
 const DAY_LENGTH = 480; // seconds for a full day/night cycle
@@ -372,8 +386,14 @@ class Game {
   createWorld(seed, save) {
     if (this.world) this.world.dispose();
 
-    this.dimension = save?.dimension || 'overworld';
+    this.dimension = Object.hasOwn(DIMENSIONS, save?.dimension || '') ? save.dimension : 'overworld';
     this.realms = save?.realms || {};
+    this.progress = save?.progress || {};
+    this.portalTimer = 0;
+    // Start "locked" so arriving inside a portal does not bounce you straight back.
+    this.portalLock = true;
+    this.realmTime = 0;
+    this.hazardTimer = 0;
     this.guide?.clear();
     this.world = new World({
       seed,
@@ -389,6 +409,7 @@ class Game {
 
     let spawn;
     this.freshSpawn = !(save && save.player && Number.isFinite(save.player.x));
+    this.pendingRealmSetup = this.freshSpawn && this.dimension !== 'overworld';
     if (this.freshSpawn) {
       const s = this.world.findSpawn();
       spawn = { x: s.x + 0.5, y: s.y, z: s.z + 0.5 };
@@ -993,7 +1014,7 @@ class Game {
       if (token === undefined) return fallback;
       if (token.startsWith('~')) {
         const rel = Number(token.slice(1) || 0);
-        return (this.player ? this.player.pos.y : 0) + rel;
+        return fallback + (Number.isFinite(rel) ? rel : 0);
       }
       const value = Number(token);
       return Number.isFinite(value) ? value : fallback;
@@ -1002,10 +1023,16 @@ class Game {
 
     switch (cmd) {
       case 'dimension':
-        say(this.travel(parts[0]));
+      case 'dim':
+        say(this.travel((parts[0] || '').toLowerCase()));
         break;
+      case 'bosses': {
+        const p = this.progress || {};
+        say(`Ember Titan (Nether): ${p.titan ? 'defeated' : 'alive'} · Void Warden (End): ${p.warden ? 'defeated' : 'alive'}`, 'system');
+        break;
+      }
       case 'help':
-        say('/dimension overworld|nether|end · /summon titan|warden');
+        say('/dimension <overworld|nether|end> · /summon <titan|warden|piglin> · /bosses', 'system');
         say('/help · /gamemode <survival|creative> · /time set <day|night|noon|midnight|0-1>', 'system');
         say('/tp <x y z> · /give <item> [n] · /clear · /kill · /heal · /feed · /spawn', 'system');
         say('/seed · /summon <mob> · /setblock <x y z> <block> · /say <text> · /list', 'system');
@@ -1110,7 +1137,7 @@ class Game {
       case 'summon': {
         const type = (parts[0] || 'pig').toLowerCase();
         if (!Object.hasOwn(MOB_TYPES, type)) {
-          fail(`Unknown mob “${type}” (pig, cow, chicken, sheep, zombie, titan, warden)`);
+          fail(`Unknown mob “${type}” (${Object.keys(MOB_TYPES).join(', ')})`);
           break;
         }
         const dir = this.player.getForward();
@@ -1684,8 +1711,10 @@ class Game {
       this.ui.swingHand();
       this.sfx.placeBlock(0);
       const dead = this.mobs.damageMob(mobHit.mob, damage, this.player.pos, (id, count) => this.collect(id, count));
-      if (dead) this.ui.addChatMessage(`Killed a ${mobHit.mob.def.name.toLowerCase()}`, 'system');
-      if (!dead && mobHit.mob.def.boss) this.ui.toast(`${mobHit.mob.def.name} · ${mobHit.mob.hp}/${mobHit.mob.def.hp} HP`, 1000);
+      if (dead) {
+        this.ui.addChatMessage(`Killed ${mobHit.mob.def.boss ? 'the' : 'a'} ${mobHit.mob.def.name.toLowerCase()}`, 'system');
+        this.onMobKilled(mobHit.mob);
+      }
       if (held && held.durability) {
         if (this.inventory.damageTool(this.selected, 1)) this.ui.toast(`${held.name} broke!`, 1800);
         this.refreshHotbar();
@@ -1763,6 +1792,21 @@ class Game {
     const def = stack ? itemDef(stack.id) : null;
     if (def && def.kind === 'food') {
       this.eatHeld();
+      return;
+    }
+    if (def && (def.use === 'nether_portal' || def.use === 'end_portal')) {
+      if (!this.target) return;
+      const portalId = def.use === 'end_portal' ? B.END_PORTAL : B.NETHER_PORTAL;
+      if (this.lightPortal(this.target, portalId)) {
+        this.ui.toast(def.use === 'end_portal' ? 'The frame hums with the void…' : 'The portal flickers to life', 2000);
+        if (this.gamemode !== 'creative') {
+          if (def.durability) this.inventory.damageTool(this.selected, 1);
+          else this.inventory.remove(stack.id, 1);
+          this.refreshHotbar();
+        }
+      } else {
+        this.ui.toast('Aim inside an obsidian frame (at least 2 wide, 3 tall inside)', 2600);
+      }
       return;
     }
     this.placeBlockFromHeld();
@@ -1848,6 +1892,10 @@ class Game {
       drown: 'You ran out of air.',
       starve: 'You starved to death.',
       zombie: 'A zombie got you.',
+      'ember titan': 'The Ember Titan crushed you.',
+      'void warden': 'The Void Warden dragged you into the dark.',
+      'zombified piglin': 'A zombified piglin got you.',
+      magma: 'You danced on magma for too long.',
       mob: 'A mob got you.',
       damage: 'You died.',
     };
@@ -1860,6 +1908,13 @@ class Game {
 
   respawn() {
     if (!this.world || !this.player) return;
+    if (this.dimension !== 'overworld' && !this.net) {
+      // Like the real game: dying in the Nether or the End sends you home.
+      this.survival.reset();
+      this.travel('overworld');
+      const home = this.world.findSpawn();
+      this.player.teleportTo(home.x + 0.5, home.y, home.z + 0.5);
+    }
     const spawn = this.world.findSpawn();
     this.player.teleportTo(spawn.x + 0.5, spawn.y, spawn.z + 0.5);
     this.survival.reset();
@@ -1884,6 +1939,7 @@ class Game {
       version: 3,
       dimension: this.dimension,
       realms: this.realms,
+      progress: this.progress,
       savedAt: Date.now(),
       seed: this.world.seed,
       time: this.timeOfDay,
@@ -1910,10 +1966,11 @@ class Game {
     };
   }
 
-  travel(target) {
+  travel(target, { portal = false } = {}) {
     if (this.net) return 'Dimension travel is single-player only.';
-    if (!['overworld', 'nether', 'end'].includes(target)) return 'Usage: /dimension <overworld|nether|end>';
-    if (target === this.dimension) return `Already in the ${target}.`;
+    if (!Object.hasOwn(DIMENSIONS, target || '')) return 'Usage: /dimension <overworld|nether|end>';
+    if (target === this.dimension) return `Already in ${DIMENSIONS[target].name}.`;
+    if (!this.world || !this.player) return 'No world loaded.';
     const data = this.captureWorld();
     const { player, edits, blockEntities, mobs } = data;
     data.realms[this.dimension] = { player, edits, blockEntities, mobs };
@@ -1921,8 +1978,201 @@ class Game {
     delete data.realms[target];
     data.dimension = target;
     this.createWorld(data.seed, data);
+    this.arrivedByPortal = portal;
+    this.travelLoading = true;
+    this.ui.showLoading(`${DIMENSIONS[target].name} · generating terrain…`);
+    this.ui.setLoadingTitle(`Entering ${DIMENSIONS[target].name}`);
+    this.ui.setPortalCharge(0);
+    this.ui.setBossBar(null);
+    this.sfx.portal?.();
     this.saveGame();
-    return `Entered the ${target}.`;
+    return `Entered ${DIMENSIONS[target].name}.`;
+  }
+
+  /** Called once the chunks around the player have loaded after a world/realm switch. */
+  onRealmReady() {
+    if (this.travelLoading) {
+      this.travelLoading = false;
+      this.ui.hideLoading();
+      this.ui.setLoadingTitle(null);
+      this.ui.toast(DIMENSIONS[this.dimension].arrival, 3600);
+    }
+    if (this.pendingRealmSetup) {
+      this.pendingRealmSetup = false;
+      if (this.dimension === 'nether') {
+        // A return portal right next to where you arrive.
+        const x = Math.floor(this.player.pos.x) + 2;
+        const y = Math.floor(this.player.pos.y);
+        const z = Math.floor(this.player.pos.z);
+        this.buildPortal(x, y, z, 'x', B.NETHER_PORTAL);
+        this.ui.addChatMessage('A return portal stands beside you. Step in and wait a moment to go home.', 'system');
+      } else if (this.dimension === 'end' && !this.progress.warden) {
+        this.ui.addChatMessage('There is no way home until the Void Warden falls. Good luck.', 'system');
+      }
+    }
+    if (this.dimension === 'end' && this.progress.warden) this.ensureEndExit();
+  }
+
+  /**
+   * Build an obsidian frame with a 2x3 portal inside. (x, y, z) is the
+   * bottom-left interior cell; `axis` is the direction the frame runs along.
+   */
+  buildPortal(x, y, z, axis, portalId) {
+    const set = (dx, dy, dd, id) => {
+      const bx = axis === 'x' ? x + dx : x + dd;
+      const bz = axis === 'x' ? z + dd : z + dx;
+      const by = y + dy;
+      if (by < 1 || by >= CHUNK_HEIGHT - 1) return;
+      if (this.world.getBlock(bx, by, bz) === id) return;
+      this.blockEntities.remove(bx, by, bz);
+      this.world.setBlock(bx, by, bz, id);
+    };
+    const floor = this.dimension === 'end' ? B.END_STONE : this.dimension === 'nether' ? B.NETHERRACK : B.COBBLE;
+    for (let dx = -2; dx <= 3; dx++) {
+      for (const dd of [-1, 1]) {
+        // A little landing on both sides, with headroom.
+        set(dx, -1, dd, floor);
+        for (let dy = 0; dy <= 3; dy++) set(dx, dy, dd, B.AIR);
+      }
+    }
+    for (let dx = -1; dx <= 2; dx++) {
+      for (let dy = -1; dy <= 3; dy++) {
+        const border = dx === -1 || dx === 2 || dy === -1 || dy === 3;
+        set(dx, dy, 0, border ? B.OBSIDIAN : portalId);
+      }
+    }
+    this.saveDirty = true;
+  }
+
+  /** The exit portal that appears on the End's central island once the Warden falls. */
+  ensureEndExit() {
+    const x = 4;
+    const z = 0;
+    const top = this.world.getHeight(x, z);
+    if (top < 0) return;
+    for (let y = top - 4; y <= top + 4; y++) {
+      if (this.world.getBlock(x, y, z) === B.END_PORTAL) return;
+    }
+    this.buildPortal(x, top + 1, z, 'x', B.END_PORTAL);
+  }
+
+  /** Flint and Steel / Ember Eye on an obsidian frame: fill its inside with portal blocks. */
+  lightPortal(target, portalId) {
+    if (this.net) {
+      this.ui.toast('Portals only work in single-player', 2000);
+      return false;
+    }
+    const sx = target.x + target.normal.x;
+    const sy = target.y + target.normal.y;
+    const sz = target.z + target.normal.z;
+    const startId = this.world.getBlock(sx, sy, sz);
+    if (startId !== B.AIR && !BLOCKS[startId]?.cross) return false;
+    for (const axis of ['x', 'z']) {
+      const cells = [];
+      const seen = new Set();
+      const queue = [[sx, sy, sz]];
+      let ok = true;
+      while (queue.length && ok) {
+        const [x, y, z] = queue.pop();
+        const key = `${x},${y},${z}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const id = this.world.getBlock(x, y, z);
+        if (id === B.OBSIDIAN) continue;
+        if (id !== B.AIR && !BLOCKS[id]?.cross) { ok = false; break; }
+        cells.push([x, y, z]);
+        if (cells.length > 21 * 21 || y <= 0 || y >= CHUNK_HEIGHT - 1) { ok = false; break; }
+        queue.push([x, y + 1, z], [x, y - 1, z]);
+        if (axis === 'x') queue.push([x + 1, y, z], [x - 1, y, z]);
+        else queue.push([x, y, z + 1], [x, y, z - 1]);
+      }
+      if (!ok || !cells.length) continue;
+      const ys = cells.map((c) => c[1]);
+      const hs = cells.map((c) => (axis === 'x' ? c[0] : c[2]));
+      const width = Math.max(...hs) - Math.min(...hs) + 1;
+      const height = Math.max(...ys) - Math.min(...ys) + 1;
+      if (width < 2 || height < 3) continue;
+      for (const [x, y, z] of cells) {
+        this.world.setBlock(x, y, z, portalId);
+        this.broadcastEdit(x, y, z, portalId);
+      }
+      this.saveDirty = true;
+      this.sfx.portal?.();
+      this.ui.swingHand();
+      this.updateTarget();
+      return true;
+    }
+    return false;
+  }
+
+  /** Portal, magma and void checks for the block the player is standing in. */
+  updateHazards(dt) {
+    const p = this.player.pos;
+    const fx = Math.floor(p.x);
+    const fz = Math.floor(p.z);
+    const feet = BLOCKS[this.world.getBlock(fx, Math.floor(p.y + 0.1), fz)];
+    const head = BLOCKS[this.world.getBlock(fx, Math.floor(p.y + 1.2), fz)];
+    const portal = feet?.portal || head?.portal;
+    if (portal && !this.net) {
+      if (!this.portalLock) {
+        const needed = this.gamemode === 'creative' ? 0.8 : 2.4;
+        this.portalTimer += dt;
+        this.ui.setPortalCharge(Math.min(1, this.portalTimer / needed), portal);
+        if (this.portalTimer >= needed) {
+          const dest = portal === 'end'
+            ? (this.dimension === 'end' ? 'overworld' : 'end')
+            : (this.dimension === 'nether' ? 'overworld' : 'nether');
+          this.portalTimer = 0;
+          this.portalLock = true;
+          // Travel at the start of the next frame, outside the movement update.
+          this.pendingTravel = dest;
+          return;
+        }
+      }
+    } else {
+      this.portalLock = false;
+      if (this.portalTimer > 0) {
+        this.portalTimer = 0;
+        this.ui.setPortalCharge(0);
+      }
+    }
+
+    // Magma burns anyone standing on it (sneaking keeps you safe, like the real thing).
+    const below = BLOCKS[this.world.getBlock(fx, Math.floor(p.y - 0.05), fz)];
+    this.hazardTimer = Math.max(0, this.hazardTimer - dt);
+    if (below?.hurts && this.player.onGround && !this.input.isDown('ShiftLeft') && this.hazardTimer <= 0) {
+      this.hazardTimer = 1;
+      this.survival.damage(below.hurts, 'magma');
+    }
+  }
+
+  /** Nearest boss within range, for the boss bar. */
+  nearestBoss() {
+    let best = null;
+    for (const mob of this.mobs.mobs) {
+      if (!mob.def.boss || mob.dead) continue;
+      const d = mob.pos.distanceTo(this.player.pos);
+      if (d < 56 && (!best || d < best.d)) best = { mob, d };
+    }
+    return best ? best.mob : null;
+  }
+
+  onMobKilled(mob) {
+    if (!mob.def.boss) return;
+    const key = mob.type;
+    const first = !this.progress[key];
+    this.progress[key] = true;
+    this.saveDirty = true;
+    this.ui.setBossBar(null);
+    this.sfx.levelUp?.();
+    if (key === 'titan') {
+      this.ui.toast('The Ember Titan has fallen', 3200);
+      if (first) this.ui.addChatMessage('Use its Ember Eye on an obsidian frame to open a portal to the End.', 'system');
+    } else if (key === 'warden') {
+      this.ui.toast('Victory · the Void Warden is defeated', 4200);
+      this.ui.addChatMessage('An exit portal has opened on the central island.', 'system');
+      if (this.dimension === 'end') this.ensureEndExit();
+    }
   }
 
   saveGame(notify = false) {
@@ -1965,6 +2215,11 @@ class Game {
   }
 
   update(dt) {
+    if (this.pendingTravel) {
+      const dest = this.pendingTravel;
+      this.pendingTravel = null;
+      if (this.state === 'playing') this.ui.addChatMessage(this.travel(dest, { portal: true }), 'system');
+    }
     const playing = this.state === 'playing';
     const touch = this.ui.isTouch;
 
@@ -2052,6 +2307,11 @@ class Game {
         this.fallStart = null;
       }
 
+      this.realmTime += dt;
+      this.updateHazards(dt);
+      const boss = this.settings.mobs ? this.nearestBoss() : null;
+      this.ui.setBossBar(boss ? { name: boss.def.name, hp: boss.hp, max: boss.def.hp, type: boss.type } : null);
+
       if (this.settings.guide && !this.net) {
         const { x, z } = this.player.pos;
         const y = this.world.getHeight(Math.floor(x + 3), Math.floor(z + 2));
@@ -2064,8 +2324,18 @@ class Game {
         this.mobs.update(dt, this.world, this.player, {
           isNight: this.sky.dayFactor < 0.32,
           allowSpawn: true,
+          canSpawnBoss: (type) => !this.progress[type] && this.realmTime > 20,
           onDamage: (amount, mob) => this.survival.damage(amount, mob.def.name.toLowerCase()),
           onDrop: (id, count) => this.collect(id, count),
+          onKilled: (mob) => this.onMobKilled(mob),
+          onAbility: (mob, kind) => {
+            if (kind === 'slam') {
+              this.player.vel.y = Math.max(this.player.vel.y, 8.5);
+              this.ui.toast('The Ember Titan slams the ground', 1200);
+            } else if (kind === 'blink') {
+              this.ui.toast('The Void Warden blinks behind you', 1200);
+            }
+          },
         });
       } else if (this.mobs.mobs.length) {
         this.mobs.clear();
@@ -2120,6 +2390,7 @@ class Game {
           this.adjustSpawn();
           this.ui.setPlayProgress(1);
           this.ui.hideLoading();
+          this.onRealmReady();
         }
       }
 
@@ -2175,29 +2446,33 @@ class Game {
     this.sky.mesh.visible = this.dimension === 'overworld';
     if (!this.sky.mesh.visible) {
       this.sky.clouds.visible = false;
-      this.scene.fog.color.setHex(this.dimension === 'nether' ? 0x703426 : 0x24162e);
-      this.scene.fog.near = 8;
+      this.scene.fog.color.setHex(realmFog(this.dimension));
+      this.scene.fog.near = this.dimension === 'nether' ? 10 : 16;
+      this.scene.fog.far = this.dimension === 'nether' ? Math.min(fogFar, 72) : fogFar;
     }
     if (underwater) {
       this.scene.fog.color.setHex(0x134a70);
       this.scene.fog.near = 0.1;
       this.scene.fog.far = 22;
     }
-    const light = 0.34 + 0.66 * this.sky.dayFactor;
-    const warm = this.sky.dayFactor;
+    const realm = DIMENSIONS[this.dimension] || DIMENSIONS.overworld;
+    const dayLevel = realm.light ?? this.sky.dayFactor;
+    const light = 0.34 + 0.66 * dayLevel;
+    const warm = dayLevel;
+    const [tr, tg, tb] = realm.tint;
     if (this.materialSet === 'basic') {
-      this.materials.opaque.color.setRGB(light, light * (0.97 + 0.03 * warm), light * 0.98);
+      this.materials.opaque.color.setRGB(light * tr, light * (0.97 + 0.03 * warm) * tg, light * 0.98 * tb);
       this.materials.water.color.setRGB(light * 0.95, light * 0.98, light);
       this.materials.glass.color.setRGB(light, light, light);
-      this.materials.plants.color.setRGB(light, light, light);
+      this.materials.plants.color.setRGB(light * tr, light * tg, light * tb);
     } else {
-      const day = this.sky.dayFactor;
-      const sunDir = this.sky.sunDir;
+      const day = dayLevel;
+      const sunDir = realm.light !== undefined ? { x: 0.3, y: 1, z: 0.2 } : this.sky.sunDir;
       this.sunLight.position.set(sunDir.x * 120, Math.max(6, sunDir.y * 140), sunDir.z * 120);
       this.sunLight.intensity = 0.15 + day * 2.9;
-      this.sunLight.color.setRGB(1, 0.94 + 0.05 * day, 0.84 + 0.14 * day);
+      this.sunLight.color.setRGB(tr, (0.94 + 0.05 * day) * tg, (0.84 + 0.14 * day) * tb);
       this.hemiLight.intensity = 0.22 + day * 1.05;
-      this.hemiLight.color.setRGB(0.72 + 0.12 * day, 0.8 + 0.1 * day, 1);
+      this.hemiLight.color.setRGB((0.72 + 0.12 * day) * tr, (0.8 + 0.1 * day) * tg, tb);
       this.ambientLight.intensity = 0.12 + day * 0.3;
       this.renderer.toneMappingExposure = this.settings.vibrant ? 1.14 : 1.0;
     }

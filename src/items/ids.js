@@ -58,6 +58,9 @@ export const I = {
   IRON_SWORD: 562,
   GOLD_SWORD: 563,
   DIAMOND_SWORD: 564,
+  FLINT_AND_STEEL: 565,
+  NETHER_QUARTZ: 566,
+  EMBER_EYE: 567,
 };
 
 export const MAX_STACK = 64;

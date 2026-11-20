@@ -8,6 +8,8 @@ set([B.GRASS, B.DIRT, B.SNOW_GRASS, B.SNOW, B.GRAVEL, B.SAND, B.CACTUS], 'soft')
 set([B.STONE, B.COBBLE, B.BEDROCK, B.SANDSTONE, B.COAL_ORE, B.IRON_ORE, B.GOLD_ORE, B.DIAMOND_ORE, B.OBSIDIAN, B.STONE_BRICKS, B.BRICKS, B.GLOWSTONE], 'hard');
 set([B.OAK_LOG, B.BIRCH_LOG, B.SPRUCE_LOG, B.PLANKS, B.OAK_LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES], 'wood');
 set([B.GLASS, B.ICE], 'glass');
+set([B.NETHERRACK, B.NETHER_QUARTZ_ORE, B.MAGMA, B.NETHER_BRICKS, B.END_STONE, B.PURPUR], 'hard');
+set([B.SOUL_SAND], 'soft');
 set([B.WATER], 'water');
 
 export class Sfx {
@@ -132,6 +134,20 @@ export class Sfx {
   click() {
     if (!this.ready) return;
     this._tone(660, 0.05, 'square', 0.05, 80);
+  }
+
+  /** Low whooshing hum when a portal lights or you travel through one. */
+  portal() {
+    if (!this.ready) return;
+    this._noise(0.9, 'bandpass', 420, 0.35, 0.5);
+    this._tone(110, 0.9, 'sine', 0.12, 220);
+    this._tone(165, 0.8, 'triangle', 0.06, -40);
+  }
+
+  /** Short rising fanfare for a defeated boss. */
+  levelUp() {
+    if (!this.ready) return;
+    [392, 523, 659, 784].forEach((f, i) => setTimeout(() => this._tone(f, 0.22, 'triangle', 0.1), i * 110));
   }
 
   toggle(on) {

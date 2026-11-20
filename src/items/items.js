@@ -53,6 +53,11 @@ material(I.WHEAT, 'Wheat');
 material(I.LEATHER, 'Leather');
 material(I.FEATHER, 'Feather');
 material(I.BONE, 'Bone');
+material(I.NETHER_QUARTZ, 'Nether Quartz');
+// Ember Eye: dropped by the Ember Titan; lights an obsidian frame into an End portal.
+material(I.EMBER_EYE, 'Ember Eye', { stack: 16, use: 'end_portal' });
+// Flint and Steel: lights an obsidian frame into a Nether portal.
+material(I.FLINT_AND_STEEL, 'Flint and Steel', { stack: 1, durability: 64, use: 'nether_portal' });
 
 const FOODS = [
   [I.APPLE, 'Apple', 4, 2.4],

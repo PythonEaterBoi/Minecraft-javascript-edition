@@ -21,6 +21,7 @@ see [Running locally](#running-locally).
 - [Survival](#survival)
 - [Crafting, smelting and containers](#crafting-smelting-and-containers)
 - [Tools, ores and mining](#tools-ores-and-mining)
+- [Dimensions and bosses](#dimensions-and-bosses)
 - [Commands and chat](#commands-and-chat)
 - [Visuals: PBR textures and vibrance](#visuals-pbr-textures-and-vibrance)
 - [Servers](#servers)
@@ -40,16 +41,20 @@ see [Running locally](#running-locally).
 - **Explore an endless procedural world** — plains, forests, deserts, snowy tundra, mountains,
   beaches and oceans, generated from a seed you can type in. Caves and cliffs are full of
   coal, copper, iron, gold, redstone, lapis, diamond and emerald ore.
+- **Travel to the Nether and the End** — build an obsidian portal, light it with flint and
+  steel, and fight two bosses on the way to the credits. See
+  [Dimensions and bosses](#dimensions-and-bosses).
 - **Survive** — 20 health, a hunger bar that drains as you sprint, jump and fight, fall
   damage, drowning, starvation and mob attacks. Health regenerates while you stay fed.
-- **Craft and smelt** — 66 recipes and 15 smelting recipes. Craft a crafting table to unlock
+- **Craft and smelt** — 70 recipes and 15 smelting recipes. Craft a crafting table to unlock
   the full grid, build a furnace to cook meat and melt ore into ingots, and store everything
   in chests.
 - **Use real tools** — wooden, stone, iron, gold and diamond pickaxes, axes, shovels and
   swords, each with its own speed, durability and damage. Ore tiers gate what you can mine.
 - **Hunt and cook** — pigs, cows, chickens and sheep drop meat and materials; cook raw meat in
   a furnace before eating it. Zombies come out at night and hit back.
-- **Build with 91 block types** — ores, planks, wool, glass, ice, amethyst, quartz, lanterns,
+- **Build with 100 block types** — ores, planks, wool, glass, ice, amethyst, quartz, lanterns,
+  netherrack, soul sand, magma, nether bricks, end stone, purpur,
   pumpkin, melon and more, all painted at boot into the texture atlas.
 - **Talk and cheat** — press `T` to chat, or type `/help` for around twenty commands
   (`/gamemode`, `/give`, `/time`, `/tp`, `/setblock`, `/summon`, `/pbr`, `/vibrant`, …).
@@ -125,6 +130,54 @@ need stone, and gold, redstone, diamond and emerald need iron (obsidian needs di
 dig down (and bring torches) to find the good stuff. Broken blocks drop themselves or their
 items — stone gives cobblestone, ores give raw material, grass gives dirt.
 
+## Dimensions and bosses
+
+The world has three realms. Each one keeps its own terrain edits, containers, mobs and the spot
+where you left it; your inventory, health and hunger travel with you.
+
+| Realm | What is there |
+| --- | --- |
+| Overworld | Where you start. Obsidian is found in rare deep pockets below y 12 (mine it with a diamond pickaxe). |
+| Nether | Netherrack wastes, soul sand valleys, magma floors, glowstone-crowned peaks, nether quartz ore, shroomlights, ruined nether-brick pillars and zombified piglins. Magma burns unless you sneak (`Shift`). |
+| The End | Floating end-stone islands over the void, a ring of obsidian pillars around the central island and purpur ruins on the outer islands. |
+
+![A lit Nether portal](screenshots/portal.jpg)
+
+### Getting there
+
+1. **Build a frame** — a ring of obsidian at least 2 wide and 3 tall inside (4 × 5 including the
+   frame; the corners are optional). Up to 21 × 21 works.
+2. **Light it** — craft **Flint and Steel** (1 iron ingot + 1 flint; gravel drops flint) and use
+   it (`B` / right click) on the inside of the frame.
+3. **Step in** and stand still for a couple of seconds. A swirl builds up on screen, then you
+   are in the Nether, next to a ready-made return portal.
+
+### The bosses
+
+| Boss | Where | Fight | Reward |
+| --- | --- | --- | --- |
+| **Ember Titan** — 90 HP | Appears in the Nether about 20 seconds after you arrive | Slams the ground when you get close (4 damage and a launch) — keep moving. | **Ember Eye**, glowstone, nether quartz |
+| **Void Warden** — 72 HP | Appears on the End's central island | Blinks behind you every few seconds; it cannot fall into the void. | Diamonds, purpur, and the **exit portal** home |
+
+Use the **Ember Eye** on any obsidian frame (in any realm) to light an **End portal**. There is
+no way out of the End until the Void Warden falls; then an exit portal opens on the central
+island. A boss bar at the top of the screen shows the health of the nearest boss. Defeated
+bosses stay defeated (`/bosses` shows your progress); `/summon titan` or `/summon warden`
+brings one back for a rematch.
+
+Dying in the Nether or the End sends you back to the Overworld spawn with your inventory, like
+the real game. Portals and dimension travel are single-player only.
+
+![Obsidian pillars around the End's central island](screenshots/the-end.jpg)
+
+### Commands and the Scout companion
+
+- `/dimension <overworld|nether|end>` (or `/dim`) jumps straight to a realm.
+- `/bosses` shows which bosses you have defeated.
+- For company, enable **Settings → AI companion**. Scout is an offline, rule-based companion:
+  ask about crafting or travel in chat, or say **“I need food”** for a bread ration once a minute.
+  No account or AI service is needed.
+
 ## Commands and chat
 
 Press `T` (or `/`) to open chat, type, and press `Enter`. Anything starting with `/` is a
@@ -135,17 +188,19 @@ command; everything else is chat and is relayed to the other players in your ses
 | `/help` | List every command |
 | `/gamemode <survival\|creative>` · `/gm` | Switch mode (creative fills an empty hotbar) |
 | `/time set <day\|noon\|sunset\|night\|midnight\|sunrise\|0-1>` · `/time add <n>` | Move the clock |
-| `/tp <x> <y> <z>` · `/teleport` | Teleport |
+| `/tp <x> <y> <z>` · `/teleport` | Teleport — `~` means relative, e.g. `/tp ~5 ~ ~-3` |
 | `/give <item> [count]` | Items and blocks, by name (`/give wooden_pickaxe 1`, `/give chest`), fuzzy match or id |
 | `/clear` | Empty the inventory |
 | `/kill` · `/heal` · `/feed` | Damage, heal or feed yourself |
 | `/spawn` | Teleport back to the world spawn |
 | `/seed` · `/list` · `/mobs` | World seed, session player list, mob count |
-| `/summon <mob> [x y z]` | Spawn a mob where you are looking |
+| `/summon <mob> [x y z]` | Spawn a mob where you are looking (`pig`, `cow`, `chicken`, `sheep`, `zombie`, `piglin`, `titan`, `warden`) |
 | `/setblock <x> <y> <z> <block>` | Place a block (and share it in a session) |
 | `/say <text>` · `/me <action>` | Chat with a different prefix |
 | `/pbr <on\|off>` · `/vibrant <on\|off>` | Toggle the renderer's look |
 | `/fly` | Toggle flight |
+| `/dimension <overworld\|nether\|end>` · `/dim` | Travel between realms (single-player) |
+| `/bosses` | Show which bosses you have defeated |
 
 ## Visuals: PBR textures and vibrance
 
@@ -320,7 +375,7 @@ Everything is committed in the form Pages needs:
 | Meshing | One buffer per chunk per material class (opaque, water, glass, plants). Faces get directional shading, ambient occlusion and a sky-depth term; quads also carry normals and tangents so normal maps work, and crossed quads render plants and torches. |
 | Terrain | Value-noise height fields with biomes, beaches, caves, ore veins, trees, plants and pumpkins; everything is derived deterministically from the seed. |
 | Textures | A 256 × 256 atlas painted at boot with 2D canvas — no image files, no network requests. The PBR normal/roughness/metalness maps are derived from the same canvas. |
-| Items | Blocks `0–90` and items `512+` share one id space; recipes, smelting, tools and food all live in `src/items/`. |
+| Items | Blocks `0–100` and items `512+` share one id space; recipes, smelting, tools and food all live in `src/items/`. |
 | Survival | `src/player/survival.js` owns health, hunger, air and damage; mobs live in `src/entities/mobs.js` and tick their own AI. |
 | Containers | `src/world/blockentities.js` keeps chest and furnace state, runs the smelting timer, and serializes into the save. |
 | Player | Axis-aligned bounding box with swept collision, walking/sprinting/jumping, swimming and creative flight. |
@@ -356,7 +411,7 @@ screenshots/            images used by this README
 
 | Key | Contents |
 | --- | --- |
-| `mje.save.v1` | Version 2 save: seed, time, gamemode, player position/rotation/flight, survival stats, inventory, block edits, container contents and up to 24 mobs. Version 1 saves still load. |
+| `mje.save.v1` | Version 3 save: current realm, every other realm's edits/containers/mobs/position, boss progress, seed, time, gamemode, player position/rotation/flight, survival stats, inventory, block edits, container contents and up to 24 mobs. Version 1 and 2 saves still load. |
 | `mje.settings.v1` | Render distance, sensitivity, sound/clouds/day-cycle toggles, PBR, vibrance and mobs. |
 | `mje.name.v1` | The player name used in multiplayer. |
 | `mje.servers.v1` | Up to 12 saved server (room) entries for the server browser. |
@@ -392,9 +447,3 @@ available in all of those browsers, but WebRTC invites require the page to be se
 - All textures, terrain and audio are generated in code; there are no third-party assets.
 - Minecraft is a trademark of Mojang Studios / Microsoft. This is a non-commercial fan
   project and is not affiliated with or endorsed by Mojang or Microsoft.
-
-### Dimensions, bosses, and Scout
-
-In single-player, press **T** and enter `/dimension nether`, `/dimension end`, or `/dimension overworld`. Your inventory travels with you; each realm remembers its terrain edits, containers, and return position. Look for the **Ember Titan** in the Nether’s glowstone hills and the **Void Warden** on the End’s floating islands. Enable **Mobs** for encounters, or use `/summon titan` and `/summon warden` with mobs enabled.
-
-For company, enable **Settings → AI companion**. Scout is an offline, rule-based player companion: ask about crafting or travel in chat, or say **“I need food”** for a bread ration once a minute. No account or AI service is needed.

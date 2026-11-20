@@ -22,6 +22,7 @@
     <div id="damage-flash" aria-hidden="true"></div>
     <div id="vibrance" aria-hidden="true"></div>
     <div id="underwater-overlay" aria-hidden="true"></div>
+    <div id="portal-overlay" aria-hidden="true"></div>
 
     <!-- ===================== In-game HUD ===================== -->
     <div id="hud" class="hidden">
@@ -30,6 +31,11 @@
       <div id="debug" class="debug hidden" aria-live="off"></div>
 
       <div id="toast" class="toast hidden"></div>
+
+      <div id="boss-bar" class="boss-bar hidden" role="status" aria-live="polite">
+        <div id="boss-name" class="boss-name"></div>
+        <div class="boss-track"><div id="boss-fill" class="boss-fill"></div></div>
+      </div>
 
       <div id="block-label" class="block-label">Grass Block</div>
 

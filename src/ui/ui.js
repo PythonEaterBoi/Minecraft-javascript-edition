@@ -169,6 +169,11 @@ export class UI {
       miningBar: document.getElementById('mining-bar'),
       miningFill: document.getElementById('mining-fill'),
       damageFlash: document.getElementById('damage-flash'),
+      bossBar: document.getElementById('boss-bar'),
+      bossName: document.getElementById('boss-name'),
+      bossFill: document.getElementById('boss-fill'),
+      portalOverlay: document.getElementById('portal-overlay'),
+      loadingLabel: document.getElementById('loading-label'),
       death: document.getElementById('death-screen'),
       deathCause: document.getElementById('death-cause'),
       chat: document.getElementById('chat'),
@@ -1024,6 +1029,34 @@ export class UI {
 
   setDebug(text) {
     if (this.debugVisible) this.el.debug.textContent = text;
+  }
+
+  /** Boss health bar at the top of the screen; pass null to hide it. */
+  setBossBar(info) {
+    const bar = this.el.bossBar;
+    if (!bar) return;
+    const key = info ? `${info.name}:${Math.ceil(info.hp)}` : '';
+    if (key === this.bossKey) return;
+    this.bossKey = key;
+    bar.classList.toggle('hidden', !info);
+    if (!info) return;
+    bar.dataset.boss = info.type || '';
+    this.el.bossName.textContent = `${info.name} · ${Math.max(0, Math.ceil(info.hp))} / ${info.max}`;
+    this.el.bossFill.style.width = `${Math.max(0, Math.min(1, info.hp / info.max)) * 100}%`;
+  }
+
+  /** Purple swirl that builds up while standing in a portal (0..1). */
+  setPortalCharge(amount, kind = 'nether') {
+    const node = this.el.portalOverlay;
+    if (!node) return;
+    node.style.opacity = String(Math.min(0.85, amount * 0.85));
+    node.dataset.kind = kind;
+  }
+
+  /** Override the loading-screen heading (null restores the default). */
+  setLoadingTitle(text) {
+    if (!this.el.loadingLabel) return;
+    this.el.loadingLabel.textContent = text || 'Generating terrain…';
   }
 
   setUnderwater(active) {
