@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Minecraft: JavaScript Edition</title>
+    <meta
+      name="description"
+      content="A fan-made voxel sandbox in the browser. Explore, mine and build an infinite procedurally generated world — written in JavaScript, no Java required."
+    />
+    <meta name="theme-color" content="#5b9a3c" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%237c5537'/%3E%3Crect width='16' height='6' fill='%236da84a'/%3E%3Crect y='6' width='16' height='1' fill='%235f9941'/%3E%3Crect x='2' y='9' width='2' height='2' fill='%23694427'/%3E%3Crect x='10' y='11' width='3' height='2' fill='%23966a48'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles/main.css" />
+  </head>
+  <body>
+    <canvas id="game-canvas" aria-label="Voxel world viewport"></canvas>
+
+    <div id="vignette" aria-hidden="true"></div>
+    <div id="damage-flash" aria-hidden="true"></div>
+    <div id="vibrance" aria-hidden="true"></div>
+    <div id="underwater-overlay" aria-hidden="true"></div>
+    <div id="portal-overlay" aria-hidden="true"></div>
+
+    <!-- ===================== In-game HUD ===================== -->
+    <div id="hud" class="hidden">
+      <div id="crosshair" aria-hidden="true"><i></i><i></i></div>
+
+      <div id="debug" class="debug hidden" aria-live="off"></div>
+
+      <div id="toast" class="toast hidden"></div>
+
+      <div id="boss-bar" class="boss-bar hidden" role="status" aria-live="polite">
+        <div id="boss-name" class="boss-name"></div>
+        <div class="boss-track"><div id="boss-fill" class="boss-fill"></div></div>
+      </div>
+
+      <div id="block-label" class="block-label">Grass Block</div>
+
+      <div id="held-block" class="held-block" aria-hidden="true"><canvas id="held-canvas" width="128" height="128"></canvas></div>
+
+      <div id="mining-bar" class="mining-bar hidden"><div id="mining-fill" class="mining-fill"></div></div>
+
+      <div id="stats" class="stats" aria-label="Health, hunger and air">
+        <div id="health-row" class="stat-row"></div>
+        <div id="hunger-row" class="stat-row"></div>
+        <div id="air-row" class="stat-row"></div>
+      </div>
+
+      <div id="hotbar" class="hotbar" role="toolbar" aria-label="Item hotbar"></div>
+
+      <div id="mp-hud" class="mp-hud hidden" aria-live="polite"></div>
+    </div>
+
+    <!-- ===================== Mobile controls ===================== -->
+    <div id="mobile-ui" class="mobile-ui hidden">
+      <div id="joystick" class="joystick">
+        <div id="joystick-knob" class="knob"></div>
+      </div>
+      <div class="touch-buttons">
+        <button class="touch-btn" data-touch="jump">Jump</button>
+        <button class="touch-btn" data-touch="down">Down</button>
+        <button class="touch-btn" data-touch="place">Place</button>
+        <button class="touch-btn" data-touch="break">Mine</button>
+        <button class="touch-btn" data-touch="fly">Fly</button>
+        <button class="touch-btn" data-touch="inventory">Blocks</button>
+        <button class="touch-btn" data-touch="pause">Menu</button>
+      </div>
+    </div>
+
+    <!-- ===================== Title screen ===================== -->
+    <div id="title-screen" class="screen title-screen">
+      <div class="title-inner">
+        <div class="logo-wrap">
+          <h1 class="logo">
+            <span>MINECRAFT</span>
+          </h1>
+        </div>
+        <p class="edition">JavaScript Edition</p>
+        <div class="splash" id="splash-text">Now in JavaScript!</div>
+
+        <div class="menu-buttons">
+          <button id="btn-play" class="mc-button primary" type="button">
+            <span>Play</span>
+            <small id="play-sub">loading world…</small>
+          </button>
+          <button id="btn-new-world" class="mc-button" type="button">New World</button>
+          <button id="btn-title-multiplayer" class="mc-button" type="button">Multiplayer</button>
+          <button id="btn-title-servers" class="mc-button" type="button">Servers</button>
+          <button id="btn-title-settings" class="mc-button" type="button">Settings</button>
+          <button id="btn-title-controls" class="mc-button" type="button">Controls</button>
+        </div>
+
+        <p class="title-footer">
+          A fan-made voxel sandbox · Not affiliated with Mojang or Microsoft
+        </p>
+      </div>
+      <div class="version-tag">v1.2.0 · three.js · <span id="seed-tag">seed 38</span></div>
+    </div>
+
+    <!-- ===================== Pause screen ===================== -->
+    <div id="pause-screen" class="screen hidden">
+      <div class="pause-inner">
+        <h2 class="screen-title">Game Paused</h2>
+        <p class="pause-meta" id="pause-meta">seed 38 · 0 edits</p>
+        <div class="menu-buttons">
+          <button id="btn-resume" class="mc-button primary" type="button">Back to Game</button>
+          <button id="btn-pause-settings" class="mc-button" type="button">Settings</button>
+          <button id="btn-pause-controls" class="mc-button" type="button">Controls</button>
+          <button id="btn-pause-multiplayer" class="mc-button" type="button">Multiplayer</button>
+          <button id="btn-pause-servers" class="mc-button" type="button">Servers</button>
+          <button id="btn-save" class="mc-button" type="button">Save World</button>
+          <button id="btn-quit" class="mc-button danger" type="button">Save &amp; Quit to Title</button>
+        </div>
+        <p class="hint">Click “Back to Game” to recapture the mouse.</p>
+      </div>
+    </div>
+
+    <!-- ===================== Modal (settings / controls / seed) ===================== -->
+    <div id="modal" class="screen hidden">
+      <div class="modal-panel">
+        <h2 id="modal-title">Settings</h2>
+        <div id="modal-body" class="modal-body"></div>
+        <div class="modal-actions">
+          <button id="modal-close" class="mc-button primary" type="button">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== Inventory / containers ===================== -->
+    <div id="inventory-screen" class="screen hidden">
+      <div class="inventory-panel">
+        <div class="inventory-header">
+          <h2 id="inventory-title">Inventory</h2>
+          <div class="inventory-tabs">
+            <button id="tab-recipes" class="mc-button tiny" type="button">Crafting</button>
+            <button id="tab-blocks" class="mc-button tiny" type="button">Blocks</button>
+            <button id="tab-craft" class="mc-button tiny hidden" type="button">Craft</button>
+          </div>
+          <button id="inventory-close" class="mc-button small" type="button">Close</button>
+        </div>
+
+        <div id="inventory-container" class="inventory-container hidden">
+          <div class="inventory-sub" id="container-label">Chest</div>
+          <div id="container-grid" class="slot-grid"></div>
+          <div id="furnace-info" class="furnace-info hidden">
+            <div class="furnace-flame"><div id="furnace-burn"></div></div>
+            <div class="furnace-arrow"><div id="furnace-progress"></div></div>
+          </div>
+        </div>
+
+        <div class="inventory-columns">
+          <div class="inventory-side">
+            <div class="inventory-sub">Inventory <span id="inventory-mode" class="inventory-mode"></span></div>
+            <div id="inventory-main-grid" class="slot-grid"></div>
+            <div class="inventory-sub">Hotbar</div>
+            <div id="inventory-hotbar-grid" class="slot-grid hotbar-grid"></div>
+            <div id="inventory-stats" class="inventory-stats"></div>
+          </div>
+          <div class="inventory-list-pane">
+            <div class="inventory-list-head">
+              <span id="list-title">Crafting</span>
+              <input id="list-search" class="inventory-search" type="search" placeholder="Search…" aria-label="Search" />
+            </div>
+            <div id="inventory-list" class="inventory-list"></div>
+          </div>
+        </div>
+        <p class="inventory-hint" id="inventory-hint">
+          Click an item to pick it up, click a slot to drop it. <kbd>Shift</kbd>+click moves a stack.
+          <kbd>E</kbd> closes.
+        </p>
+      </div>
+      <div id="inventory-cursor" class="inventory-cursor hidden" aria-hidden="true"></div>
+    </div>
+
+    <!-- ===================== Death ===================== -->
+    <div id="death-screen" class="screen hidden">
+      <div class="death-inner">
+        <h2 class="death-title">You died</h2>
+        <p id="death-cause" class="death-cause">Try again?</p>
+        <div class="menu-buttons">
+          <button id="btn-respawn" class="mc-button primary" type="button">Respawn</button>
+          <button id="btn-death-title" class="mc-button danger" type="button">Quit to Title</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== Chat ===================== -->
+    <div id="chat" class="chat">
+      <div id="chat-log" class="chat-log" aria-live="polite"></div>
+      <div id="chat-input-row" class="chat-input-row hidden">
+        <span id="chat-prefix" class="chat-prefix">/</span>
+        <input id="chat-input" class="chat-input" type="text" maxlength="200" autocomplete="off"
+               spellcheck="false" aria-label="Chat message or command" />
+      </div>
+    </div>
+
+    <!-- ===================== Loading ===================== -->
+    <div id="loading-screen" class="screen hidden">
+      <div class="loading-box">
+        <div class="loading-title">Minecraft: JavaScript Edition</div>
+        <div class="loading-label" id="loading-label">Generating terrain…</div>
+        <div class="bar"><div id="loading-fill" class="fill"></div></div>
+        <div class="loading-sub" id="loading-sub">carving caves · planting trees</div>
+      </div>
+    </div>
+
+    <!-- ===================== Fatal error ===================== -->
+    <div id="fatal-screen" class="screen hidden">
+      <div class="fatal-box">
+        <h2>Something went wrong</h2>
+        <p id="fatal-message"></p>
+        <p class="hint">
+          This game needs WebGL. Try a current version of Chrome, Firefox, Safari or Edge with
+          hardware acceleration enabled.
+        </p>
+        <button class="mc-button" type="button" onclick="location.reload()">Reload</button>
+      </div>
+    </div>
+
+    <noscript>
+      <div class="noscript">This game is written in JavaScript — please enable it to play.</div>
+    </noscript>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
