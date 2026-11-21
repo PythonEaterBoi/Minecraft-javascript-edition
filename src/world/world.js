@@ -290,6 +290,7 @@ export class World {
 
   /** Find a pleasant grassy spawn near the origin. */
   findSpawn() {
+    if (['nether', 'end'].includes(this.generator.dimension)) return { x: 0, z: 0, y: Math.floor(this.generator.heightAt(0, 0)) + 2, biome: this.generator.biomeAt(0, 0) };
     const candidates = [];
     for (let radius = 0; radius <= 40; radius++) {
       for (let dz = -radius; dz <= radius; dz++) {

@@ -99,6 +99,7 @@ class Game {
 
     this.setupRenderer();
     this.setupScene();
+    this.guide = new RemotePlayers(this.scene);
     this.mobs = new MobManager(this.scene);
     this.survival.onDamage = (amount, cause) => this.onPlayerDamage(amount, cause);
     this.survival.onDeath = (cause) => this.die(cause);
@@ -371,6 +372,9 @@ class Game {
   createWorld(seed, save) {
     if (this.world) this.world.dispose();
 
+    this.dimension = save?.dimension || 'overworld';
+    this.realms = save?.realms || {};
+    this.guide?.clear();
     this.world = new World({
       seed,
       scene: this.scene,
@@ -378,6 +382,7 @@ class Game {
       renderDistance: this.settings.renderDistance,
     });
 
+    this.world.generator.dimension = this.dimension;
     if (save && Array.isArray(save.edits)) this.world.loadEdits(save.edits);
     this.blockEntities = new BlockEntities();
     if (save) this.blockEntities.load(save.blockEntities);
@@ -794,6 +799,7 @@ class Game {
     if (!this.world || !this.player) return null;
     return {
       v: 1,
+      dimension: this.dimension,
       seed: this.world.seed,
       time: this.timeOfDay,
       edits: this.world.serializeEdits(),
@@ -825,7 +831,7 @@ class Game {
     this.timeOfDay = Number.isFinite(snapshot.time) ? snapshot.time : 0.38;
     this.state = 'loading';
     this.pendingJoin = true;
-    this.createWorld(snapshot.seed, null);
+    this.createWorld(snapshot.seed, { dimension: snapshot.dimension });
     if (Array.isArray(snapshot.edits)) this.world.loadEdits(snapshot.edits);
     if (Array.isArray(snapshot.entities)) this.blockEntities.load(snapshot.entities);
     if (snapshot.gamemode === 'creative') this.setGamemode('creative');
@@ -966,6 +972,15 @@ class Game {
     }
     this.ui.addChatMessage(`${this.mpName}: ${line}`, 'chat');
     if (this.net) this.net.sendChat(line);
+    else if (this.settings.guide) {
+      let reply = 'Ask me about food, crafting, or dimension travel.';
+      if (/food|bread|hungry/i.test(line)) {
+        if (performance.now() < (this.nextRation || 0)) reply = 'I need a minute to pack another ration.';
+        else { this.collect(I.BREAD, 1); this.nextRation = performance.now() + 60000; reply = 'Here, take some bread.'; }
+      } else if (/craft|wood/i.test(line)) reply = 'Punch a tree, then open E to turn logs into planks.';
+      else if (/dimension|travel|boss/i.test(line)) reply = 'Try /dimension nether for the Ember Titan or /dimension end for the Void Warden.';
+      this.ui.addChatMessage(`Scout: ${reply}`, 'chat');
+    }
   }
 
   runCommand(input) {
@@ -986,7 +1001,11 @@ class Game {
     const playerPos = this.player ? this.player.pos : { x: 0, y: 0, z: 0 };
 
     switch (cmd) {
+      case 'dimension':
+        say(this.travel(parts[0]));
+        break;
       case 'help':
+        say('/dimension overworld|nether|end · /summon titan|warden');
         say('/help · /gamemode <survival|creative> · /time set <day|night|noon|midnight|0-1>', 'system');
         say('/tp <x y z> · /give <item> [n] · /clear · /kill · /heal · /feed · /spawn', 'system');
         say('/seed · /summon <mob> · /setblock <x y z> <block> · /say <text> · /list', 'system');
@@ -1090,8 +1109,8 @@ class Game {
       }
       case 'summon': {
         const type = (parts[0] || 'pig').toLowerCase();
-        if (!MOB_TYPES[type]) {
-          fail(`Unknown mob “${type}” (pig, cow, chicken, sheep, zombie)`);
+        if (!Object.hasOwn(MOB_TYPES, type)) {
+          fail(`Unknown mob “${type}” (pig, cow, chicken, sheep, zombie, titan, warden)`);
           break;
         }
         const dir = this.player.getForward();
@@ -1666,6 +1685,7 @@ class Game {
       this.sfx.placeBlock(0);
       const dead = this.mobs.damageMob(mobHit.mob, damage, this.player.pos, (id, count) => this.collect(id, count));
       if (dead) this.ui.addChatMessage(`Killed a ${mobHit.mob.def.name.toLowerCase()}`, 'system');
+      if (!dead && mobHit.mob.def.boss) this.ui.toast(`${mobHit.mob.def.name} · ${mobHit.mob.hp}/${mobHit.mob.def.hp} HP`, 1000);
       if (held && held.durability) {
         if (this.inventory.damageTool(this.selected, 1)) this.ui.toast(`${held.name} broke!`, 1800);
         this.refreshHotbar();
@@ -1859,37 +1879,58 @@ class Game {
   /* Save / load                                                         */
   /* ------------------------------------------------------------------ */
 
+  captureWorld() {
+    return {
+      version: 3,
+      dimension: this.dimension,
+      realms: this.realms,
+      savedAt: Date.now(),
+      seed: this.world.seed,
+      time: this.timeOfDay,
+      gamemode: this.gamemode,
+      player: {
+        x: this.player.pos.x,
+        y: this.player.pos.y,
+        z: this.player.pos.z,
+        yaw: this.player.yaw,
+        pitch: this.player.pitch,
+        flying: this.player.flying,
+      },
+      survival: this.survival.serialize(),
+      inventory: this.inventory.serialize(),
+      selected: this.selected,
+      edits: this.world.serializeEdits(),
+      blockEntities: this.blockEntities.serialize(),
+      mobs: this.mobs.mobs.slice(0, 24).map((mob) => ({
+        type: mob.type,
+        x: mob.pos.x,
+        y: mob.pos.y,
+        z: mob.pos.z,
+      })),
+    };
+  }
+
+  travel(target) {
+    if (this.net) return 'Dimension travel is single-player only.';
+    if (!['overworld', 'nether', 'end'].includes(target)) return 'Usage: /dimension <overworld|nether|end>';
+    if (target === this.dimension) return `Already in the ${target}.`;
+    const data = this.captureWorld();
+    const { player, edits, blockEntities, mobs } = data;
+    data.realms[this.dimension] = { player, edits, blockEntities, mobs };
+    Object.assign(data, { player: null, edits: [], blockEntities: [], mobs: [] }, data.realms[target]);
+    delete data.realms[target];
+    data.dimension = target;
+    this.createWorld(data.seed, data);
+    this.saveGame();
+    return `Entered the ${target}.`;
+  }
+
   saveGame(notify = false) {
     if (!this.world || !this.player) return;
     // Multiplayer worlds are temporary: never overwrite the single-player save.
     if (this.noSave) return;
     try {
-      const data = {
-        version: 2,
-        savedAt: Date.now(),
-        seed: this.world.seed,
-        time: this.timeOfDay,
-        gamemode: this.gamemode,
-        player: {
-          x: this.player.pos.x,
-          y: this.player.pos.y,
-          z: this.player.pos.z,
-          yaw: this.player.yaw,
-          pitch: this.player.pitch,
-          flying: this.player.flying,
-        },
-        survival: this.survival.serialize(),
-        inventory: this.inventory.serialize(),
-        selected: this.selected,
-        edits: this.world.serializeEdits(),
-        blockEntities: this.blockEntities.serialize(),
-        mobs: this.mobs.mobs.slice(0, 24).map((mob) => ({
-          type: mob.type,
-          x: mob.pos.x,
-          y: mob.pos.y,
-          z: mob.pos.z,
-        })),
-      };
+      const data = this.captureWorld();
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
       this.saveDirty = false;
       this.lastSave = performance.now();
@@ -1944,7 +1985,7 @@ class Game {
     }
 
     // Movement.
-    if (playing && this.player) {
+    if (playing && this.player && this.worldReady) {
       const move = this.input.getMoveState();
       if (touch) {
         const joystick = this.ui.getTouchState();
@@ -2011,13 +2052,19 @@ class Game {
         this.fallStart = null;
       }
 
+      if (this.settings.guide && !this.net) {
+        const { x, z } = this.player.pos;
+        const y = this.world.getHeight(Math.floor(x + 3), Math.floor(z + 2));
+        if (y >= 0) this.guide.setState('scout', { name: 'Scout', p: [x + 3, y + 1, z + 2], yaw: this.player.yaw });
+        this.guide.update(dt, 0.9);
+      } else if (this.guide.count) this.guide.clear();
       this.mobAttackCooldown = Math.max(0, this.mobAttackCooldown - dt);
       this.hurtSoundTimer = Math.max(0, this.hurtSoundTimer - dt);
       if (this.settings.mobs) {
         this.mobs.update(dt, this.world, this.player, {
           isNight: this.sky.dayFactor < 0.32,
           allowSpawn: true,
-          onDamage: (amount) => this.survival.damage(amount, 'zombie'),
+          onDamage: (amount, mob) => this.survival.damage(amount, mob.def.name.toLowerCase()),
           onDrop: (id, count) => this.collect(id, count),
         });
       } else if (this.mobs.mobs.length) {
@@ -2125,6 +2172,12 @@ class Game {
     this.ui.setUnderwater(!!underwater);
     const fogFar = underwater ? 24 : this.settings.renderDistance * 16 - 8;
     this.sky.update(this.camera, this.timeOfDay, dt, fogFar);
+    this.sky.mesh.visible = this.dimension === 'overworld';
+    if (!this.sky.mesh.visible) {
+      this.sky.clouds.visible = false;
+      this.scene.fog.color.setHex(this.dimension === 'nether' ? 0x703426 : 0x24162e);
+      this.scene.fog.near = 8;
+    }
     if (underwater) {
       this.scene.fog.color.setHex(0x134a70);
       this.scene.fog.near = 0.1;

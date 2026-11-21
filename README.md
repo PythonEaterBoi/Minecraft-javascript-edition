@@ -392,3 +392,9 @@ available in all of those browsers, but WebRTC invites require the page to be se
 - All textures, terrain and audio are generated in code; there are no third-party assets.
 - Minecraft is a trademark of Mojang Studios / Microsoft. This is a non-commercial fan
   project and is not affiliated with or endorsed by Mojang or Microsoft.
+
+### Dimensions, bosses, and Scout
+
+In single-player, press **T** and enter `/dimension nether`, `/dimension end`, or `/dimension overworld`. Your inventory travels with you; each realm remembers its terrain edits, containers, and return position. Look for the **Ember Titan** in the Nether’s glowstone hills and the **Void Warden** on the End’s floating islands. Enable **Mobs** for encounters, or use `/summon titan` and `/summon warden` with mobs enabled.
+
+For company, enable **Settings → AI companion**. Scout is an offline, rule-based player companion: ask about crafting or travel in chat, or say **“I need food”** for a bread ration once a minute. No account or AI service is needed.

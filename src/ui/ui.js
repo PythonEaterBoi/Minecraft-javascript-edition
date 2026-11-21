@@ -18,6 +18,7 @@ const DEFAULTS = {
   pbr: true,
   vibrant: true,
   mobs: true,
+  guide: false,
 };
 
 const HEART_SVG = (fill) =>
@@ -452,6 +453,7 @@ export class UI {
         { key: 'dayCycle', title: 'Day/night cycle', desc: 'Sunrises, sunsets and starry nights.', type: 'toggle' },
         { key: 'pbr', title: 'PBR materials', desc: 'Normal, roughness and metalness maps with sunlight.', type: 'toggle' },
         { key: 'vibrant', title: 'Vibrant visuals', desc: 'Saturated colour grading, sun glow and bloom.', type: 'toggle' },
+        { key: 'guide', title: 'AI companion', desc: 'Scout follows you in solo play. Ask for food or advice in chat.', type: 'toggle' },
         { key: 'mobs', title: 'Mobs', desc: 'Animals and night-time zombies.', type: 'toggle' },
       ];
 
